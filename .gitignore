@@ -262,6 +262,9 @@ Thumbs.db
 .classpath
 .settings/
 
+# Kiro IDE
+.kiro/
+
 # Backup files
 *.bak
 *.backup
