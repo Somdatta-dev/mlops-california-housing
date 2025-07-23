@@ -1,0 +1,4 @@
+[core]
+    remote = gdrive
+['remote "gdrive"']
+    url = C:\Users\Sumit\Desktop\Sem 3\MLops\Assignment\Part1\..\dvc_remote_storage
