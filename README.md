@@ -37,7 +37,7 @@ MLOps Platform
 
 ### 1. Clone Repository
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Somdatta-dev/mlops-california-housing.git
 cd mlops-california-housing
 ```
 
@@ -254,17 +254,7 @@ API_PORT=8000
 DATABASE_URL=sqlite:///./mlops_platform.db
 ```
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Troubleshooting
 
@@ -298,15 +288,5 @@ pip install -r requirements.txt
 python -c "import sys; print(sys.path)"
 ```
 
-## 📞 Support
-
-For questions or issues:
-1. Check the troubleshooting section above
-2. Review existing GitHub issues
-3. Create a new issue with detailed description
-
----
-
-**Status**: ✅ Data versioning complete | 🔄 Model training in progress | ⏳ API development pending
 
 Built with ❤️ for MLOps best practices
