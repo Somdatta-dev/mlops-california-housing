@@ -12,7 +12,9 @@
   - Create .gitignore file optimized for Python ML projects with DVC and Docker exclusions
   - _Requirements: 1.1, 1.4_
 
-- [-] 2. DVC Data Versioning Setup
+- [x] 2. DVC Data Versioning Setup
+
+
 
 
 
