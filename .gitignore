@@ -328,3 +328,6 @@ yarn-error.log*
 .pnpm-debug.log*
 .vercel
 *.tsbuildinfo
+
+# Project planning files (not for repo)
+mlops_project_plan.md
