@@ -1,6 +1,6 @@
 # MLOps California Housing Prediction Platform
 
-A complete MLOps pipeline for California Housing price prediction with DVC data versioning, MLflow experiment tracking, FastAPI deployment, and comprehensive monitoring.
+A complete MLOps pipeline for California Housing price prediction with DVC data versioning, comprehensive data management, and robust validation systems. This project demonstrates production-ready MLOps practices with automated data processing, quality validation, and feature engineering.
 
 ## 🏗️ Architecture Overview
 
@@ -92,20 +92,23 @@ python src/data_validation.py
 mlops-california-housing/
 ├── data/
 │   ├── raw/                    # Raw dataset files (DVC tracked)
-│   └── processed/              # Processed data (DVC tracked)
+│   ├── processed/              # Processed data splits (DVC tracked)
+│   └── interim/                # Intermediate processing files
 ├── src/
-│   ├── data/
-│   │   ├── data_loader.py      # Data loading utilities
-│   │   └── data_validation.py  # Data quality validation
-│   ├── models/                 # ML model training scripts
-│   ├── api/                    # FastAPI application
-│   └── monitoring/             # Logging and monitoring
+│   ├── data_manager.py         # Core data management with DVC integration
+│   ├── data_loader.py          # Data loading utilities
+│   ├── data_validation.py      # Data quality validation
+│   └── setup_dvc_remote.py     # DVC remote configuration
+├── tests/
+│   ├── test_data_manager.py    # Comprehensive data management tests
+│   └── __init__.py
 ├── notebooks/                  # Jupyter notebooks for EDA
-├── tests/                      # Unit and integration tests
 ├── docker/                     # Docker configuration
 ├── .github/workflows/          # CI/CD pipelines
+├── .kiro/specs/mlops-platform/ # Project specifications
 ├── requirements.txt            # Python dependencies
 ├── setup_project.py           # Automated setup script
+├── .env                       # Environment configuration
 └── README.md                  # This file
 ```
 
@@ -113,9 +116,13 @@ mlops-california-housing/
 
 ### Data Management
 ```bash
-# Load and validate data
-python src/data_loader.py
-python src/data_validation.py
+# Run complete data management pipeline
+python src/data_manager.py
+
+# Individual components
+python src/data_loader.py          # Load California Housing dataset
+python src/data_validation.py      # Validate data quality
+python src/setup_dvc_remote.py     # Configure DVC remote storage
 
 # Check DVC status
 dvc status
@@ -123,39 +130,64 @@ dvc pull  # Pull latest data
 dvc push  # Push data changes
 ```
 
-### Model Training
-```bash
-# Start MLflow tracking server
-mlflow ui --host 0.0.0.0 --port 5000
-
-# Train models (when implemented)
-python src/models/train_models.py
-```
-
-### API Development
-```bash
-# Start FastAPI server (when implemented)
-uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
-```
-
 ### Testing
 ```bash
-# Run tests (when implemented)
-pytest tests/
-pytest --cov=src tests/  # With coverage
+# Run comprehensive test suite
+pytest tests/test_data_manager.py -v
+
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest --cov=src tests/
 ```
 
-## 📈 Data Validation Results
+### Data Processing Features
+```bash
+# The DataManager provides:
+# - Automatic data download and validation
+# - Feature engineering (8 → 16 features)
+# - Outlier handling with IQR/Z-score methods
+# - Train/validation/test splits (64%/16%/20%)
+# - Data scaling with StandardScaler/RobustScaler
+# - Comprehensive quality reporting
+```
+
+## 📈 Data Management & Validation
+
+### Core DataManager Features ✅
+
+**Comprehensive Data Pipeline:**
+- **Pydantic Data Models**: Strict validation with CaliforniaHousingData model
+- **Feature Engineering**: Automatically creates 8 additional features from original 8
+- **Quality Validation**: Schema validation, missing values, duplicates, outliers detection
+- **Outlier Handling**: IQR and Z-score methods with configurable thresholds
+- **Data Scaling**: StandardScaler and RobustScaler options
+- **Train/Val/Test Splits**: Configurable ratios (default: 64%/16%/20%)
+
+**Engineered Features:**
+- `RoomsPerHousehold`: Average rooms per household
+- `BedroomsPerRoom`: Bedroom to room ratio
+- `PopulationPerHousehold`: Population density per household
+- `DistanceFromCenter`: Geographic distance from dataset center
+- `IncomePerRoom`: Income normalized by rooms
+- `IncomePerPerson`: Income per occupant
+- `HouseAgeCategory`: Categorical age groups (0-4 scale)
+- `PopulationDensity`: Population per room per occupant
+
+### Data Validation Results
 
 The dataset passes comprehensive validation with the following checks:
 - ✅ **Schema Validation**: All expected columns present with correct types
 - ✅ **Data Quality**: No missing values, no duplicates, no infinite values
 - ✅ **Statistical Properties**: Reasonable distributions and correlations
-- ⚠️ **Value Ranges**: Some outliers detected (normal for real-world data)
+- ✅ **Pydantic Validation**: All records conform to CaliforniaHousingData model
+- ⚠️ **Value Ranges**: Some outliers detected and handled (normal for real-world data)
 
 **Dataset Statistics:**
 - Total samples: 20,640
-- Features: 8 numerical
+- Original features: 8 numerical
+- Engineered features: 8 additional
 - Missing values: 0
 - Duplicate rows: 0
 - Data quality score: 100%
@@ -200,18 +232,23 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
+**Comprehensive Test Suite (23 Tests):**
+- **Pydantic Model Tests**: CaliforniaHousingData validation
+- **DataManager Tests**: Core functionality, DVC integration, preprocessing
+- **Data Quality Tests**: Validation, outlier handling, feature engineering
+- **Integration Tests**: Full pipeline testing with real data
+
 ```bash
-# Unit tests
-pytest tests/unit/
+# Run all data management tests
+pytest tests/test_data_manager.py -v
 
-# Integration tests  
-pytest tests/integration/
+# Run specific test classes
+pytest tests/test_data_manager.py::TestCaliforniaHousingData -v
+pytest tests/test_data_manager.py::TestDataManager -v
+pytest tests/test_data_manager.py::TestIntegration -v
 
-# Data validation tests
-pytest tests/data/
-
-# API tests (when implemented)
-pytest tests/api/
+# Run with coverage
+pytest --cov=src tests/
 ```
 
 ## 📚 API Documentation
