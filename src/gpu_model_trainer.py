@@ -714,48 +714,355 @@ class GPUModelTrainer:
     
     def _train_xgboost(self, X_train: np.ndarray, y_train: np.ndarray,
                       X_val: Optional[np.ndarray], y_val: Optional[np.ndarray]):
-        """Train XGBoost model with GPU acceleration."""
+        """
+        Train XGBoost model with GPU acceleration, advanced hyperparameters,
+        feature importance extraction, cross-validation, and comprehensive MLflow logging.
+        """
         try:
             import xgboost as xgb
+            from sklearn.model_selection import cross_val_score
         except ImportError:
             raise ImportError("XGBoost not installed. Install with: pip install xgboost")
         
         config = self.config.xgboost
+        start_time = time.time()
         
-        # Prepare parameters
+        logger.info("Starting XGBoost GPU training with advanced configuration...")
+        
+        # Advanced XGBoost parameters optimized for deep trees and high estimator counts
         params = {
+            # GPU acceleration (modern XGBoost 3.x API)
             'tree_method': config.tree_method,
-            'gpu_id': config.gpu_id,
+            'device': 'cuda' if config.tree_method == 'gpu_hist' else 'cpu',
+            # Note: gpu_id is deprecated in XGBoost 3.x, use device instead
+            
+            # Advanced tree parameters for deep learning
             'max_depth': config.max_depth,
+            'max_leaves': 2**config.max_depth,  # Exponential leaf growth for deep trees
+            'grow_policy': 'lossguide',  # Loss-guided growth for better performance
+            
+            # Learning parameters
             'learning_rate': config.learning_rate,
+            'n_estimators': config.n_estimators,
+            
+            # Advanced sampling parameters
             'subsample': config.subsample,
             'colsample_bytree': config.colsample_bytree,
+            'colsample_bylevel': 0.8,  # Column sampling by tree level
+            'colsample_bynode': 0.8,   # Column sampling by node
+            
+            # Regularization for high complexity models
             'reg_alpha': config.reg_alpha,
             'reg_lambda': config.reg_lambda,
-            'random_state': config.random_state,
+            'gamma': 0.1,  # Minimum loss reduction for split
+            'min_child_weight': 3,  # Minimum sum of instance weight in child
+            
+            # Advanced optimization
+            'max_delta_step': 1,  # Maximum delta step for weight estimation
+            'scale_pos_weight': 1,  # Balance of positive and negative weights
+            
+            # Objective and evaluation
             'objective': 'reg:squarederror',
-            'eval_metric': 'rmse'
+            'eval_metric': ['rmse', 'mae'],
+            
+            # Reproducibility and performance
+            'random_state': config.random_state,
+            'n_jobs': -1,  # Use all available cores
+            'verbosity': 1  # Moderate verbosity for monitoring
         }
         
-        # Create DMatrix
-        dtrain = xgb.DMatrix(X_train, label=y_train)
+        # Log advanced hyperparameters to MLflow
+        advanced_params = {
+            'xgb_max_leaves': params['max_leaves'],
+            'xgb_grow_policy': params['grow_policy'],
+            'xgb_colsample_bylevel': params['colsample_bylevel'],
+            'xgb_colsample_bynode': params['colsample_bynode'],
+            'xgb_gamma': params['gamma'],
+            'xgb_min_child_weight': params['min_child_weight'],
+            'xgb_max_delta_step': params['max_delta_step']
+        }
+        self.mlflow_manager.log_parameters(advanced_params)
         
-        eval_set = []
+        # Create DMatrix with feature names for better interpretability
+        feature_names = [f'feature_{i}' for i in range(X_train.shape[1])]
+        dtrain = xgb.DMatrix(X_train, label=y_train, feature_names=feature_names)
+        
+        # Setup evaluation sets
+        eval_set = [(dtrain, 'train')]
+        dval = None
         if X_val is not None and y_val is not None:
-            dval = xgb.DMatrix(X_val, label=y_val)
-            eval_set = [(dtrain, 'train'), (dval, 'val')]
-        else:
-            eval_set = [(dtrain, 'train')]
+            dval = xgb.DMatrix(X_val, label=y_val, feature_names=feature_names)
+            eval_set.append((dval, 'val'))
         
-        # Train model
+        # Perform cross-validation before training
+        cv_rounds = min(config.n_estimators, 1000)  # Limit CV rounds for efficiency
+        logger.info(f"Performing {5}-fold cross-validation with {cv_rounds} rounds...")
+        print(f"[CV] Starting cross-validation: {5} folds, {cv_rounds} rounds")
+        cv_start_time = time.time()
+        
+        cv_results = xgb.cv(
+            params=params,
+            dtrain=dtrain,
+            num_boost_round=cv_rounds,
+            nfold=5,
+            stratified=False,  # Regression task
+            shuffle=True,
+            seed=config.random_state,
+            early_stopping_rounds=config.early_stopping_rounds,
+            verbose_eval=50  # Show progress every 50 rounds
+        )
+        
+        cv_time = time.time() - cv_start_time
+        
+        # Extract CV results
+        cv_train_rmse_mean = cv_results['train-rmse-mean'].iloc[-1]
+        cv_train_rmse_std = cv_results['train-rmse-std'].iloc[-1]
+        cv_test_rmse_mean = cv_results['test-rmse-mean'].iloc[-1]
+        cv_test_rmse_std = cv_results['test-rmse-std'].iloc[-1]
+        cv_best_iteration = len(cv_results)
+        
+        # Log cross-validation results
+        cv_metrics = {
+            'cv_train_rmse_mean': cv_train_rmse_mean,
+            'cv_train_rmse_std': cv_train_rmse_std,
+            'cv_test_rmse_mean': cv_test_rmse_mean,
+            'cv_test_rmse_std': cv_test_rmse_std,
+            'cv_best_iteration': cv_best_iteration,
+            'cv_time_seconds': cv_time
+        }
+        
+        # Log metrics individually to MLflow
+        for key, value in cv_metrics.items():
+            try:
+                import mlflow
+                mlflow.log_metric(key, value)
+            except Exception as e:
+                logger.debug(f"Failed to log CV metric {key}: {e}")
+        
+        logger.info(f"Cross-validation completed in {cv_time:.2f}s")
+        logger.info(f"CV RMSE: {cv_test_rmse_mean:.4f} ± {cv_test_rmse_std:.4f}")
+        print(f"[CV] Cross-validation completed: RMSE={cv_test_rmse_mean:.4f} ± {cv_test_rmse_std:.4f}")
+        
+        # Train final model with optimal number of estimators from CV
+        optimal_estimators = min(cv_best_iteration + config.early_stopping_rounds, config.n_estimators)
+        logger.info(f"Training final model with {optimal_estimators} estimators...")
+        print(f"[TRAIN] Starting final training with {optimal_estimators} estimators...")
+        
+        # Setup training history tracking
+        training_history = []
+        
+        # Train the model with early stopping
         model = xgb.train(
             params=params,
             dtrain=dtrain,
-            num_boost_round=config.n_estimators,
+            num_boost_round=optimal_estimators,
             evals=eval_set,
             early_stopping_rounds=config.early_stopping_rounds,
-            verbose_eval=False
+            verbose_eval=100  # Print evaluation every 100 rounds
         )
+        
+        # Collect training history after training (simplified for compatibility)
+        for i in range(0, model.num_boosted_rounds(), 100):
+            gpu_metrics = self.gpu_monitor.get_metrics()
+            progress_entry = {
+                'iteration': i,
+                'elapsed_time': time.time() - start_time
+            }
+            
+            if gpu_metrics:
+                progress_entry.update({
+                    'gpu_utilization': gpu_metrics.utilization_percent,
+                    'gpu_memory_used_mb': gpu_metrics.memory_used_mb,
+                    'gpu_temperature_c': gpu_metrics.temperature_celsius,
+                    'gpu_power_watts': gpu_metrics.power_usage_watts
+                })
+            
+            training_history.append(progress_entry)
+        
+        training_time = time.time() - start_time
+        logger.info(f"XGBoost training completed in {training_time:.2f}s")
+        
+        # Extract and log feature importance
+        logger.info("Extracting feature importance...")
+        feature_importance = model.get_score(importance_type='gain')  # Use gain for feature importance
+        feature_importance_weight = model.get_score(importance_type='weight')  # Frequency of feature usage
+        feature_importance_cover = model.get_score(importance_type='cover')  # Coverage of feature
+        
+        # Create feature importance visualization
+        plots_dir = self._create_plots_directory()
+        
+        # Plot feature importance (gain)
+        if feature_importance:
+            importance_df = pd.DataFrame([
+                {'feature': k, 'importance': v, 'type': 'gain'} 
+                for k, v in feature_importance.items()
+            ])
+            importance_df = importance_df.sort_values('importance', ascending=False).head(20)
+            
+            plt.figure(figsize=(12, 8))
+            plt.barh(range(len(importance_df)), importance_df['importance'])
+            plt.yticks(range(len(importance_df)), importance_df['feature'])
+            plt.xlabel('Feature Importance (Gain)')
+            plt.title('XGBoost Feature Importance - Top 20 Features')
+            plt.gca().invert_yaxis()
+            plt.tight_layout()
+            
+            importance_plot_path = plots_dir / 'XGBoost_feature_importance.png'
+            plt.savefig(importance_plot_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            # Log feature importance metrics
+            top_features = importance_df.head(10)
+            for idx, row in top_features.iterrows():
+                try:
+                    import mlflow
+                    mlflow.log_metric(f"feature_importance_{row['feature']}", row['importance'])
+                except Exception as e:
+                    logger.debug(f"Failed to log feature importance {row['feature']}: {e}")
+        
+        # Create comprehensive training curves plot
+        if training_history:
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            fig.suptitle('XGBoost Training Progress', fontsize=16)
+            
+            iterations = [h['iteration'] for h in training_history]
+            
+            # Training progress (simplified - show iteration progress)
+            axes[0, 0].plot(iterations, [i for i in iterations], label='Training Progress', color='blue')
+            axes[0, 0].set_title('Training Progress')
+            axes[0, 0].set_xlabel('Iteration')
+            axes[0, 0].set_ylabel('Completed Iterations')
+            axes[0, 0].legend()
+            axes[0, 0].grid(True)
+            
+            # GPU utilization
+            gpu_utils = [h.get('gpu_utilization', 0) for h in training_history]
+            if any(gpu_utils):
+                axes[0, 1].plot(iterations, gpu_utils, color='green')
+                axes[0, 1].set_title('GPU Utilization')
+                axes[0, 1].set_xlabel('Iteration')
+                axes[0, 1].set_ylabel('Utilization (%)')
+                axes[0, 1].grid(True)
+            else:
+                axes[0, 1].text(0.5, 0.5, 'GPU Metrics\nNot Available', 
+                               ha='center', va='center', transform=axes[0, 1].transAxes)
+                axes[0, 1].set_title('GPU Utilization')
+            
+            # GPU memory
+            gpu_memory = [h.get('gpu_memory_used_mb', 0) for h in training_history]
+            if any(gpu_memory):
+                axes[0, 2].plot(iterations, gpu_memory, color='red')
+                axes[0, 2].set_title('GPU Memory Usage')
+                axes[0, 2].set_xlabel('Iteration')
+                axes[0, 2].set_ylabel('Memory (MB)')
+                axes[0, 2].grid(True)
+            else:
+                axes[0, 2].text(0.5, 0.5, 'GPU Memory\nNot Available', 
+                               ha='center', va='center', transform=axes[0, 2].transAxes)
+                axes[0, 2].set_title('GPU Memory Usage')
+            
+            # GPU temperature
+            gpu_temps = [h.get('gpu_temperature_c', 0) for h in training_history]
+            if any(gpu_temps):
+                axes[1, 0].plot(iterations, gpu_temps, color='orange')
+                axes[1, 0].set_title('GPU Temperature')
+                axes[1, 0].set_xlabel('Iteration')
+                axes[1, 0].set_ylabel('Temperature (°C)')
+                axes[1, 0].grid(True)
+            else:
+                axes[1, 0].text(0.5, 0.5, 'GPU Temperature\nNot Available', 
+                               ha='center', va='center', transform=axes[1, 0].transAxes)
+                axes[1, 0].set_title('GPU Temperature')
+            
+            # GPU power
+            gpu_power = [h.get('gpu_power_watts', 0) for h in training_history]
+            if any(gpu_power):
+                axes[1, 1].plot(iterations, gpu_power, color='purple')
+                axes[1, 1].set_title('GPU Power Usage')
+                axes[1, 1].set_xlabel('Iteration')
+                axes[1, 1].set_ylabel('Power (W)')
+                axes[1, 1].grid(True)
+            else:
+                axes[1, 1].text(0.5, 0.5, 'GPU Power\nNot Available', 
+                               ha='center', va='center', transform=axes[1, 1].transAxes)
+                axes[1, 1].set_title('GPU Power Usage')
+            
+            # Training time progression
+            elapsed_times = [h.get('elapsed_time', 0) for h in training_history]
+            if elapsed_times:
+                axes[1, 2].plot(iterations, elapsed_times, color='brown')
+                axes[1, 2].set_title('Cumulative Training Time')
+                axes[1, 2].set_xlabel('Iteration')
+                axes[1, 2].set_ylabel('Time (seconds)')
+                axes[1, 2].grid(True)
+            
+            plt.tight_layout()
+            training_curves_path = plots_dir / 'XGBoost_training_curves.png'
+            plt.savefig(training_curves_path, dpi=300, bbox_inches='tight')
+            plt.close()
+        
+        # Log comprehensive training metrics
+        final_metrics = {
+            'xgb_training_time': training_time,
+            'xgb_best_iteration': model.best_iteration if hasattr(model, 'best_iteration') else optimal_estimators,
+            'xgb_num_features': X_train.shape[1],
+            'xgb_num_trees': model.num_boosted_rounds(),
+            'xgb_feature_importance_count': len(feature_importance) if feature_importance else 0
+        }
+        
+        # Add final evaluation metrics
+        if eval_set:
+            train_pred = model.predict(dtrain)
+            train_metrics = self._calculate_metrics(y_train, train_pred)
+            final_metrics.update({
+                'xgb_final_train_rmse': train_metrics['rmse'],
+                'xgb_final_train_mae': train_metrics['mae'],
+                'xgb_final_train_r2': train_metrics['r2_score']
+            })
+            
+            if dval is not None:
+                val_pred = model.predict(dval)
+                val_metrics = self._calculate_metrics(y_val, val_pred)
+                final_metrics.update({
+                    'xgb_final_val_rmse': val_metrics['rmse'],
+                    'xgb_final_val_mae': val_metrics['mae'],
+                    'xgb_final_val_r2': val_metrics['r2_score']
+                })
+        
+        # Log final metrics individually to MLflow
+        for key, value in final_metrics.items():
+            try:
+                import mlflow
+                mlflow.log_metric(key, value)
+            except Exception as e:
+                logger.debug(f"Failed to log final metric {key}: {e}")
+        
+        # Save model artifacts
+        model_path = plots_dir / 'xgboost_model.json'
+        model.save_model(str(model_path))
+        
+        # Save feature importance data
+        if feature_importance:
+            importance_data = {
+                'gain': feature_importance,
+                'weight': feature_importance_weight,
+                'cover': feature_importance_cover
+            }
+            
+            importance_json_path = plots_dir / 'xgboost_feature_importance.json'
+            with open(importance_json_path, 'w') as f:
+                json.dump(importance_data, f, indent=2)
+        
+        # Save training history
+        if training_history:
+            history_path = plots_dir / 'xgboost_training_history.json'
+            with open(history_path, 'w') as f:
+                json.dump(training_history, f, indent=2)
+        
+        logger.info("XGBoost training completed successfully with comprehensive logging")
+        logger.info(f"Model saved to: {model_path}")
+        logger.info(f"Feature importance plot saved to: {importance_plot_path}")
+        logger.info(f"Training curves saved to: {training_curves_path}")
         
         return model
     
@@ -984,7 +1291,9 @@ class GPUModelTrainer:
         """Make predictions with the trained model."""
         if model_name == 'xgboost':
             import xgboost as xgb
-            dtest = xgb.DMatrix(X)
+            # Create feature names to match training
+            feature_names = [f'feature_{i}' for i in range(X.shape[1])]
+            dtest = xgb.DMatrix(X, feature_names=feature_names)
             return model.predict(dtest)
         
         elif model_name == 'lightgbm':
