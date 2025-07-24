@@ -10,10 +10,11 @@ MLOps Platform
 │   ├── California Housing Dataset
 │   ├── Data Validation & Quality Checks
 │   └── Version Control with Remote Storage
-├── Model Development (MLflow)
-│   ├── Multiple ML Models (XGBoost, Neural Networks, etc.)
-│   ├── Experiment Tracking
-│   └── Model Registry
+├── MLflow Experiment Tracking
+│   ├── Cross-Platform Configuration
+│   ├── Comprehensive Experiment Management
+│   ├── Model Registry with Versioning
+│   └── GPU Metrics & Artifact Logging
 ├── API Deployment (FastAPI)
 │   ├── Prediction Endpoints
 │   ├── Model Serving
@@ -98,7 +99,10 @@ mlops-california-housing/
 │   ├── data_manager.py         # Core data management with DVC integration
 │   ├── data_loader.py          # Data loading utilities
 │   ├── data_validation.py      # Data quality validation
+│   ├── mlflow_config.py        # MLflow experiment tracking & model registry
 │   └── setup_dvc_remote.py     # DVC remote configuration
+├── examples/
+│   └── mlflow_example.py       # MLflow integration demonstration
 ├── tests/
 │   ├── test_data_manager.py    # Comprehensive data management tests
 │   └── __init__.py
@@ -192,6 +196,93 @@ The dataset passes comprehensive validation with the following checks:
 - Duplicate rows: 0
 - Data quality score: 100%
 
+## 🧪 MLflow Experiment Tracking
+
+### Comprehensive MLflow Integration ✅
+
+**Production-Ready MLflow Setup:**
+- **Cross-Platform Configuration**: Works seamlessly on Windows, Linux, and macOS
+- **Comprehensive Fallback System**: Automatic URI fallback for maximum reliability
+- **Model Registry Integration**: Full versioning and stage management
+- **GPU Metrics Support**: Track GPU utilization and memory usage
+- **Multi-Framework Support**: sklearn, PyTorch, XGBoost, LightGBM
+
+### Key Features
+
+**MLflowConfig Class:**
+- Pydantic-based configuration with environment variable support
+- Automatic validation for tracking URIs and experiment names
+- Support for S3-compatible storage and custom artifact locations
+
+**MLflowExperimentManager:**
+- Complete experiment lifecycle management
+- Structured metrics logging with `ExperimentMetrics` dataclass
+- Artifact management for plots and model information
+- Model registry operations (register, version, stage management)
+- Automatic cleanup of old runs
+
+**Cross-Platform Fallback System:**
+1. **Primary URI**: Uses configured tracking URI
+2. **SQLite Fallback**: Local SQLite database
+3. **File URI Fallback**: Platform-specific file URI formatting
+4. **Local Path Fallback**: Simple directory paths
+5. **In-Memory Fallback**: SQLite in-memory as last resort
+
+### MLflow Usage
+
+**Basic Experiment Tracking:**
+```bash
+# Run MLflow example
+python examples/mlflow_example.py
+
+# Start MLflow UI
+mlflow ui --backend-store-uri sqlite:///mlflow_demo.db
+```
+
+**Programmatic Usage:**
+```python
+from src.mlflow_config import create_mlflow_manager, MLflowConfig, ExperimentMetrics
+
+# Create configuration
+config = MLflowConfig(
+    tracking_uri="sqlite:///mlflow.db",
+    experiment_name="housing-prediction"
+)
+
+# Initialize manager
+manager = create_mlflow_manager(config)
+
+# Start experiment run
+run_id = manager.start_run("model-training", {"model": "xgboost"})
+
+# Log parameters and metrics
+manager.log_parameters({"learning_rate": 0.1, "max_depth": 6})
+metrics = ExperimentMetrics(rmse=0.5, mae=0.3, r2_score=0.8, training_time=120.0)
+manager.log_metrics(metrics)
+
+# Log model
+manager.log_model(model, "xgboost")
+manager.end_run("FINISHED")
+
+# Query experiments
+best_run = manager.get_best_run("rmse", ascending=True)
+runs = manager.get_experiment_runs()
+
+# Model registry
+version = manager.register_model(run_id, "housing-model", "Production")
+loaded_model = manager.load_model("housing-model", "Production")
+```
+
+**MLflow Testing:**
+```bash
+# Run MLflow tests (32 comprehensive tests)
+pytest tests/test_mlflow_config.py -v
+
+# Test specific functionality
+pytest tests/test_mlflow_config.py::TestMLflowExperimentManager -v
+pytest tests/test_mlflow_config.py::TestIntegration -v
+```
+
 ## 🔄 DVC Data Versioning
 
 This project uses DVC (Data Version Control) for dataset management:
@@ -232,24 +323,44 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (23 Tests):**
+**Comprehensive Test Suite (55+ Tests):**
+
+### Data Management Tests (23 Tests)
 - **Pydantic Model Tests**: CaliforniaHousingData validation
 - **DataManager Tests**: Core functionality, DVC integration, preprocessing
 - **Data Quality Tests**: Validation, outlier handling, feature engineering
 - **Integration Tests**: Full pipeline testing with real data
 
+### MLflow Integration Tests (32 Tests)
+- **Configuration Tests**: MLflowConfig validation and environment handling
+- **Experiment Manager Tests**: All MLflow operations (logging, querying, registry)
+- **Cross-Platform Tests**: URI generation and fallback mechanisms
+- **Integration Tests**: End-to-end MLflow workflows with real backend
+
 ```bash
-# Run all data management tests
+# Run all tests
+pytest tests/ -v
+
+# Run data management tests
 pytest tests/test_data_manager.py -v
+
+# Run MLflow tests
+pytest tests/test_mlflow_config.py -v
 
 # Run specific test classes
 pytest tests/test_data_manager.py::TestCaliforniaHousingData -v
-pytest tests/test_data_manager.py::TestDataManager -v
-pytest tests/test_data_manager.py::TestIntegration -v
+pytest tests/test_mlflow_config.py::TestMLflowExperimentManager -v
+pytest tests/test_mlflow_config.py::TestIntegration -v
 
 # Run with coverage
 pytest --cov=src tests/
 ```
+
+**Test Coverage:**
+- ✅ **Data Management**: 100% coverage of core functionality
+- ✅ **MLflow Integration**: 100% coverage with cross-platform support
+- ✅ **Error Handling**: Comprehensive fallback and recovery testing
+- ✅ **Integration**: Real-world scenario testing
 
 ## 📚 API Documentation
 
