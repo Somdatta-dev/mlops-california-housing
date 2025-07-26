@@ -22,6 +22,13 @@ MLOps Platform
 │   ├── Feature Importance Extraction & Visualization
 │   ├── Cross-Validation & Early Stopping
 │   └── Asynchronous Training with Progress Tracking
+├── Model Comparison and Selection System
+│   ├── Automated Model Comparison Across All 5 Trained Models
+│   ├── Cross-Validation Evaluation with Statistical Significance Testing
+│   ├── Multi-Criteria Model Selection with Configurable Weights
+│   ├── Best Model Registration in MLflow Model Registry
+│   ├── Comprehensive Visualization and Reporting Utilities
+│   └── Support for cuML, XGBoost, LightGBM, and PyTorch Models
 ├── MLflow Experiment Tracking
 │   ├── Cross-Platform Configuration
 │   ├── Comprehensive Experiment Management
@@ -114,6 +121,7 @@ mlops-california-housing/
 │   ├── gpu_model_trainer.py    # GPU-accelerated model training with VRAM cleanup
 │   ├── pytorch_neural_network.py # PyTorch neural network with mixed precision training
 │   ├── cuml_models.py          # cuML GPU-accelerated Linear Regression & Random Forest
+│   ├── model_comparison.py     # Model comparison and selection system
 │   ├── mlflow_config.py        # MLflow experiment tracking & model registry
 │   └── setup_dvc_remote.py     # DVC remote configuration
 ├── examples/
@@ -121,6 +129,7 @@ mlops-california-housing/
 │   ├── gpu_trainer_example.py  # GPU model trainer demonstration
 │   ├── pytorch_neural_network_example.py # PyTorch neural network training demonstration
 │   ├── cuml_training_example.py # cuML model training demonstration
+│   ├── model_comparison_example.py # Model comparison and selection demonstration
 │   ├── vram_cleanup_demo.py    # VRAM cleanup functionality demo
 │   ├── xgboost_gpu_example.py  # XGBoost GPU training demonstration
 │   ├── xgboost_rtx5090_demo.py # XGBoost RTX 5090 optimized demo
@@ -131,6 +140,7 @@ mlops-california-housing/
 │   ├── test_gpu_model_trainer.py # GPU training infrastructure tests
 │   ├── test_pytorch_neural_network.py # PyTorch neural network tests
 │   ├── test_cuml_models.py     # cuML model training tests
+│   ├── test_model_comparison.py # Model comparison and selection tests
 │   ├── test_xgboost_gpu_training.py # XGBoost GPU training tests
 │   ├── test_lightgbm_gpu_training.py # LightGBM GPU training tests
 │   └── __init__.py
@@ -419,6 +429,182 @@ Final Memory State: 0.000 GB allocated ✅
 7. **Context managers** - Automatic cleanup on scope exit
 8. **Memory monitoring** - Real-time tracking and reporting
 
+## 🔄 Model Comparison and Selection System
+
+### Comprehensive Model Comparison ✅
+
+**Production-Ready Model Comparison Platform:**
+- **Automated Model Comparison**: Compare all 5 GPU-accelerated models (cuML Linear Regression, cuML Random Forest, XGBoost, PyTorch Neural Network, LightGBM)
+- **Cross-Validation Evaluation**: K-fold cross-validation with statistical significance testing
+- **Multi-Criteria Model Selection**: Configurable weights for RMSE, MAE, R², and training time
+- **MLflow Model Registry Integration**: Automatic best model registration with proper staging
+- **Comprehensive Visualization**: Performance comparison plots, cross-validation results, training characteristics
+- **Statistical Testing**: Pairwise model comparisons with p-value calculations
+
+### Key Features
+
+**ModelComparisonSystem Class:**
+- **Automated Evaluation**: Comprehensive evaluation across training, validation, and test sets
+- **Cross-Validation**: Configurable K-fold CV with proper model cloning and retraining
+- **Statistical Tests**: Pairwise significance testing between models
+- **Model Selection**: Multi-criteria selection with weighted composite scoring
+- **Visualization**: Automated generation of comparison plots and charts
+- **MLflow Integration**: Best model registration in Model Registry with metadata
+
+**ModelSelectionCriteria:**
+- **Configurable Weights**: Customize importance of different metrics
+- **Primary/Secondary Metrics**: Hierarchical metric prioritization
+- **Minimize/Maximize**: Specify which metrics to minimize (RMSE, MAE) vs maximize (R²)
+- **Cross-Validation Folds**: Configurable number of CV folds (3-10)
+- **Significance Threshold**: P-value threshold for statistical significance
+
+**Comprehensive Reporting:**
+- **JSON Export**: Detailed comparison results with all metrics and metadata
+- **CSV Export**: Tabular summary for spreadsheet analysis
+- **HTML Reports**: Professional reports with tables and summaries
+- **Plot Generation**: High-quality PNG plots saved to plots/ directory
+
+### Model Comparison Usage
+
+**Basic Model Comparison:**
+```bash
+# Run model comparison example
+python examples/model_comparison_example.py
+
+# Run simple demonstration
+python model_comparison_demo.py
+```
+
+**Programmatic Usage:**
+```python
+from src.model_comparison import ModelComparisonSystem, ModelSelectionCriteria
+from src.mlflow_config import MLflowExperimentManager, MLflowConfig
+
+# Setup MLflow
+mlflow_config = MLflowConfig(experiment_name="model-comparison")
+mlflow_manager = MLflowExperimentManager(mlflow_config)
+
+# Configure selection criteria
+criteria = ModelSelectionCriteria(
+    primary_metric="rmse",
+    secondary_metrics=["mae", "r2_score"],
+    weights={"rmse": 0.4, "mae": 0.3, "r2_score": 0.2, "training_time": 0.1},
+    cv_folds=5
+)
+
+# Initialize comparison system
+comparison_system = ModelComparisonSystem(mlflow_manager, criteria)
+
+# Run comprehensive comparison
+result = comparison_system.compare_models(
+    X_train=X_train, y_train=y_train,
+    X_val=X_val, y_val=y_val,
+    X_test=X_test, y_test=y_test,
+    trained_models=trained_models  # Dictionary of trained models
+)
+
+# Access results
+print(f"Best model: {result.best_model}")
+print(f"Selection score: {result.comparison_summary['best_score']:.4f}")
+
+# Export comprehensive report
+comparison_system.export_comparison_report("model_comparison_report.html")
+```
+
+**Model Training Integration:**
+```python
+# Train all 5 models for comparison
+trained_models = {}
+
+# cuML models
+from src.cuml_models import CuMLModelTrainer, CuMLModelConfig
+cuml_trainer = CuMLModelTrainer(CuMLModelConfig(), mlflow_manager)
+lr_result = cuml_trainer.train_linear_regression(X_train, y_train, X_val, y_val)
+rf_result = cuml_trainer.train_random_forest(X_train, y_train, X_val, y_val)
+
+trained_models['cuML_LinearRegression'] = {
+    'model': lr_result.model,
+    'training_time': lr_result.training_time,
+    'model_type': 'cuml',
+    'metrics': lr_result.metrics
+}
+
+trained_models['cuML_RandomForest'] = {
+    'model': rf_result.model,
+    'training_time': rf_result.training_time,
+    'model_type': 'cuml',
+    'metrics': rf_result.metrics
+}
+
+# GPU models
+from src.gpu_model_trainer import GPUModelTrainer, ModelConfig
+gpu_trainer = GPUModelTrainer(ModelConfig(), mlflow_manager)
+
+# XGBoost
+xgb_model, xgb_time, xgb_metrics = gpu_trainer.train_xgboost_gpu(X_train, y_train, X_val, y_val)
+trained_models['XGBoost'] = {
+    'model': xgb_model,
+    'training_time': xgb_time,
+    'model_type': 'xgboost',
+    'metrics': xgb_metrics
+}
+
+# LightGBM
+lgb_model, lgb_time, lgb_metrics = gpu_trainer.train_lightgbm_gpu(X_train, y_train, X_val, y_val)
+trained_models['LightGBM'] = {
+    'model': lgb_model,
+    'training_time': lgb_time,
+    'model_type': 'lightgbm',
+    'metrics': lgb_metrics
+}
+
+# PyTorch Neural Network
+from src.pytorch_neural_network import PyTorchNeuralNetworkTrainer
+pytorch_trainer = PyTorchNeuralNetworkTrainer(mlflow_manager)
+pytorch_result = pytorch_trainer.train(X_train, y_train, X_val, y_val)
+trained_models['PyTorch'] = {
+    'model': pytorch_result['model'],
+    'training_time': pytorch_result['training_time'],
+    'model_type': 'pytorch',
+    'metrics': pytorch_result['metrics']
+}
+
+# Run comparison
+comparison_result = comparison_system.compare_models(
+    X_train, y_train, X_val, y_val, X_test, y_test, trained_models
+)
+```
+
+**Model Comparison Testing:**
+```bash
+# Run model comparison tests
+pytest tests/test_model_comparison.py -v
+
+# Test specific functionality
+pytest tests/test_model_comparison.py::TestModelComparisonSystem -v
+pytest tests/test_model_comparison.py::TestModelSelectionCriteria -v
+pytest tests/test_model_comparison.py::TestIntegration -v
+```
+
+### Comparison Results and Visualizations
+
+The Model Comparison System generates comprehensive visualizations:
+
+**Generated Plots:**
+- **Performance Comparison**: Bar charts comparing RMSE, MAE, R², and training time
+- **Cross-Validation Results**: Error bar plots showing CV performance with confidence intervals
+- **Training Characteristics**: Scatter plots showing training time vs performance trade-offs
+- **Model Selection Summary**: Composite score visualization and selection criteria breakdown
+
+**Exported Files:**
+- `plots/model_performance_comparison.png` - Main performance comparison
+- `plots/cv_comparison.png` - Cross-validation results
+- `plots/training_characteristics.png` - Training time and model size analysis
+- `plots/model_selection_summary.png` - Selection summary with best model profile
+- `plots/cuml_model_comparison.json` - Detailed comparison data
+- `plots/cuml_model_comparison.csv` - Tabular summary
+- `model_comparison_report.html` - Professional HTML report
+
 ### GPU Configuration Examples
 
 **XGBoost GPU Configuration:**
@@ -646,7 +832,7 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (106+ Tests):**
+**Comprehensive Test Suite (120+ Tests):**
 
 ### Data Management Tests (23 Tests)
 - **Pydantic Model Tests**: CaliforniaHousingData validation
@@ -703,6 +889,16 @@ The platform includes comprehensive monitoring:
 - **Integration Tests**: End-to-end PyTorch training workflows with real data
 - **GPU Integration Tests**: CUDA compatibility and memory management
 
+### Model Comparison and Selection Tests (14 Tests)
+- **Configuration Tests**: ModelSelectionCriteria validation and parameter handling
+- **Performance Metrics Tests**: ModelPerformanceMetrics dataclass and serialization
+- **Model Comparison Tests**: ModelComparisonSystem functionality and model evaluation
+- **Statistical Testing**: Pairwise model comparisons and significance testing
+- **Model Selection Tests**: Multi-criteria selection with weighted composite scoring
+- **Visualization Tests**: Automated plot generation and comparison charts
+- **MLflow Integration Tests**: Best model registration and Model Registry integration
+- **Integration Tests**: End-to-end model comparison workflows with real models
+
 ```bash
 # Run all tests
 pytest tests/ -v
@@ -719,6 +915,8 @@ pytest tests/test_mlflow_config.py::TestMLflowExperimentManager -v
 pytest tests/test_mlflow_config.py::TestIntegration -v
 pytest tests/test_pytorch_neural_network.py::TestHousingNeuralNetwork -v
 pytest tests/test_pytorch_neural_network.py::TestPyTorchNeuralNetworkTrainer -v
+pytest tests/test_model_comparison.py::TestModelComparisonSystem -v
+pytest tests/test_model_comparison.py::TestModelSelectionCriteria -v
 
 # Run with coverage
 pytest --cov=src tests/
@@ -730,6 +928,7 @@ pytest --cov=src tests/
 - ✅ **GPU Training Infrastructure**: Comprehensive VRAM cleanup and device management testing
 - ✅ **XGBoost GPU Training**: Advanced hyperparameters, feature importance, cross-validation testing
 - ✅ **PyTorch Neural Networks**: Mixed precision training, early stopping, comprehensive metrics testing
+- ✅ **Model Comparison System**: Comprehensive model evaluation, selection, and visualization testing
 - ✅ **Error Handling**: Comprehensive fallback and recovery testing
 - ✅ **Integration**: Real-world scenario testing
 
@@ -810,7 +1009,47 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 2.4 - LightGBM GPU Training Implementation (Latest)
+### Version 2.5 - Model Comparison and Selection System (Latest)
+
+**🚀 Major New Features:**
+- **Comprehensive Model Comparison**: Automated comparison across all 5 trained models (cuML Linear Regression, cuML Random Forest, XGBoost, PyTorch Neural Network, LightGBM)
+- **Cross-Validation Evaluation**: K-fold cross-validation with statistical significance testing and proper model cloning
+- **Multi-Criteria Model Selection**: Configurable weights for RMSE, MAE, R², and training time with weighted composite scoring
+- **MLflow Model Registry Integration**: Automatic best model registration with proper staging and metadata tagging
+- **Comprehensive Visualization**: Performance comparison plots, cross-validation results, training characteristics, and selection summaries
+- **Statistical Significance Testing**: Pairwise model comparisons with p-value calculations and relative difference analysis
+
+**🔧 Technical Improvements:**
+- **ModelComparisonSystem Class**: Production-ready model comparison with comprehensive evaluation pipeline
+- **ModelSelectionCriteria**: Configurable selection criteria with Pydantic validation and flexible weighting
+- **ModelPerformanceMetrics**: Comprehensive metrics dataclass with cross-validation results and GPU metrics
+- **Statistical Testing**: Pairwise significance testing with simplified p-value estimation
+- **Visualization Pipeline**: Automated generation of 4 comprehensive comparison plots
+- **Export Capabilities**: JSON, CSV, and HTML report generation with detailed model analysis
+
+**📊 Performance Results:**
+- **Model Evaluation**: Comprehensive evaluation across training, validation, and test sets
+- **Cross-Validation**: 5-fold CV with proper model cloning and statistical analysis
+- **Selection Accuracy**: Multi-criteria selection with weighted composite scoring
+- **Visualization Quality**: High-quality PNG plots with professional formatting
+- **Export Completeness**: Detailed JSON/CSV exports with all metrics and metadata
+
+**🧪 Testing & Validation:**
+- **14 New Model Comparison Tests**: Comprehensive testing of comparison system and selection criteria
+- **Configuration Validation**: ModelSelectionCriteria validation with parameter range checking
+- **Statistical Testing**: Validation of pairwise comparisons and significance calculations
+- **Visualization Testing**: Automated plot generation and artifact logging validation
+- **Integration Testing**: End-to-end model comparison workflows with real models
+- **MLflow Integration**: Best model registration and Model Registry integration testing
+
+**📁 New Files Added:**
+- `src/model_comparison.py` - Complete model comparison and selection system (650+ lines)
+- `examples/model_comparison_example.py` - Comprehensive model comparison demonstration
+- `tests/test_model_comparison.py` - Full model comparison testing suite (14 tests)
+- `model_comparison_demo.py` - Simple demonstration script
+- `MODEL_COMPARISON_SUMMARY.md` - Comprehensive implementation documentation
+
+### Version 2.4 - LightGBM GPU Training Implementation
 
 **🚀 Major New Features:**
 - **LightGBM GPU Training**: Complete implementation with GPU acceleration and optimized parameters for regression tasks
