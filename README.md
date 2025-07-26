@@ -40,7 +40,8 @@ MLOps Platform
 │   ├── MLflow Model Registry Integration with Caching & Fallback
 │   ├── Prometheus Metrics Integration with GPU Monitoring
 │   ├── Structured Logging for All API Operations
-│   └── Advanced Error Handling & Middleware
+│   ├── Advanced Error Handling & Middleware
+│   └── Comprehensive Pydantic Validation Models with Business Logic
 ├── CI/CD Pipeline (GitHub Actions)
 │   ├── Automated Testing
 │   ├── Docker Build & Deploy
@@ -138,6 +139,8 @@ mlops-california-housing/
 │   ├── api/                    # FastAPI service foundation
 │   │   ├── main.py            # Main FastAPI application
 │   │   ├── config.py          # Configuration management
+│   │   ├── models.py          # Pydantic validation models
+│   │   ├── validation_utils.py # Validation utilities and error handling
 │   │   ├── metrics.py         # Prometheus metrics integration
 │   │   ├── model_loader.py    # MLflow Model Registry integration
 │   │   ├── health.py          # Health check endpoints
@@ -153,6 +156,7 @@ mlops-california-housing/
 │   ├── mlflow_config.py        # MLflow experiment tracking & model registry
 │   └── setup_dvc_remote.py     # DVC remote configuration
 ├── examples/
+│   ├── pydantic_models_demo.py # Pydantic validation models demonstration
 │   ├── fastapi_foundation_demo.py # FastAPI service foundation demonstration
 │   ├── mlflow_example.py       # MLflow integration demonstration
 │   ├── gpu_trainer_example.py  # GPU model trainer demonstration
@@ -164,6 +168,7 @@ mlops-california-housing/
 │   ├── xgboost_rtx5090_demo.py # XGBoost RTX 5090 optimized demo
 │   └── lightgbm_gpu_example.py # LightGBM GPU training demonstration
 ├── tests/
+│   ├── test_api_models.py      # Pydantic validation models tests
 │   ├── test_api_foundation.py  # FastAPI service foundation tests
 │   ├── test_data_manager.py    # Comprehensive data management tests
 │   ├── test_mlflow_config.py   # MLflow integration tests
@@ -188,6 +193,9 @@ mlops-california-housing/
 
 ### Data Management
 ```bash
+# Run Pydantic models demonstration
+python examples/pydantic_models_demo.py
+
 # Run complete data management pipeline
 python src/data_manager.py
 
@@ -850,11 +858,17 @@ app = create_app()
 # Run FastAPI foundation tests
 pytest tests/test_api_foundation.py -v
 
+# Run Pydantic validation models tests
+pytest tests/test_api_models.py -v
+
 # Test specific components
 pytest tests/test_api_foundation.py::TestAPIConfig -v
 pytest tests/test_api_foundation.py::TestPrometheusMetrics -v
 pytest tests/test_api_foundation.py::TestModelLoader -v
 pytest tests/test_api_foundation.py::TestFastAPIApp -v
+pytest tests/test_api_models.py::TestHousingPredictionRequest -v
+pytest tests/test_api_models.py::TestPredictionResponse -v
+pytest tests/test_api_models.py::TestBatchPredictionRequest -v
 ```
 
 ## 🧪 MLflow Experiment Tracking
@@ -984,7 +998,7 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (140+ Tests):**
+**Comprehensive Test Suite (184+ Tests):**
 
 ### Data Management Tests (23 Tests)
 - **Pydantic Model Tests**: CaliforniaHousingData validation
@@ -1059,6 +1073,16 @@ The platform includes comprehensive monitoring:
 - **FastAPI Application Tests**: Endpoint functionality, error handling, and middleware
 - **Integration Tests**: End-to-end FastAPI workflows with real components
 
+### Pydantic Validation Models Tests (44 Tests)
+- **HousingPredictionRequest Tests**: Comprehensive field validation with custom validators for all 8 California Housing features
+- **Response Model Tests**: PredictionResponse, BatchPredictionResponse, and ModelInfo validation
+- **Error Handling Tests**: ValidationErrorResponse and PredictionError model validation
+- **Business Logic Tests**: Advanced validation for California Housing data edge cases and constraints
+- **Batch Processing Tests**: Batch size limits, validation, and response formatting
+- **Edge Case Tests**: Boundary conditions, extreme values, and floating-point precision
+- **JSON Serialization Tests**: Model serialization/deserialization and API compatibility
+- **Enum Validation Tests**: ValidationErrorType, ModelStage, and PredictionStatus enums
+
 ```bash
 # Run all tests
 pytest tests/ -v
@@ -1090,6 +1114,7 @@ pytest --cov=src tests/
 ```
 
 **Test Coverage:**
+- ✅ **Pydantic Validation Models**: Comprehensive validation testing with business logic and edge cases
 - ✅ **FastAPI Service Foundation**: Complete API service testing with configuration, metrics, health checks
 - ✅ **Data Management**: 100% coverage of core functionality
 - ✅ **MLflow Integration**: 100% coverage with cross-platform support
@@ -1237,7 +1262,55 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 2.6 - FastAPI Service Foundation (Latest)
+### Version 2.7 - Pydantic Validation Models (Latest)
+
+**🚀 Major New Features:**
+- **Comprehensive Pydantic Models**: Complete validation models for California Housing prediction API with advanced validation logic
+- **HousingPredictionRequest**: Advanced field validation with custom validators for all 8 housing features and business logic validation
+- **Response Models**: PredictionResponse, BatchPredictionResponse, ModelInfo with confidence intervals and comprehensive metadata
+- **Error Handling Models**: ValidationErrorResponse and PredictionError with detailed validation error reporting
+- **Business Logic Validation**: Geographic income consistency, demographic validation, and California-specific constraints
+- **Batch Processing Support**: Configurable batch size limits with comprehensive batch statistics and error aggregation
+
+**🔧 Technical Improvements:**
+- **Advanced Field Validation**: Dataset-specific bounds based on actual California Housing data with custom validators
+- **Model Relationship Validation**: Cross-field validation for bedroom-to-room ratios, population density consistency
+- **Validation Utilities**: Comprehensive error conversion, business rule validation, and logging integration
+- **Type Safety**: Full Pydantic v2 integration with ConfigDict and modern validation patterns
+- **JSON Schema Generation**: Automatic API documentation with examples and field descriptions
+- **Enum Support**: ValidationErrorType, ModelStage, and PredictionStatus for standardized responses
+
+**📊 Validation Features:**
+- **California Housing Specialization**: Validation bounds based on actual dataset (32.54-41.95° latitude, -124.35 to -114.31° longitude)
+- **Business Rule Validation**: Income-to-housing characteristic consistency, age-to-room configuration validation
+- **Geographic Validation**: Regional income expectations for San Francisco Bay Area and Los Angeles
+- **Edge Case Handling**: Extreme but valid coordinates, unusual housing configurations, floating-point precision
+- **Error Classification**: Detailed error types with field-specific information and actionable messages
+
+**🧪 Testing & Validation:**
+- **44 Comprehensive Tests**: Complete testing of all Pydantic models with validation scenarios and edge cases
+- **Field Validation Tests**: Individual testing for each housing feature with boundary conditions
+- **Business Logic Tests**: Cross-field relationship validation and geographic consistency checks
+- **Error Handling Tests**: Validation error conversion and standardized response formatting
+- **Batch Processing Tests**: Batch size limits, validation, and response aggregation
+- **JSON Serialization Tests**: Model serialization/deserialization and API compatibility
+
+**📁 New Files Added:**
+- `src/api/models.py` - Comprehensive Pydantic validation models (800+ lines)
+- `src/api/validation_utils.py` - Validation utilities and error handling (400+ lines)
+- `tests/test_api_models.py` - Complete Pydantic models testing suite (44 tests)
+- `examples/pydantic_models_demo.py` - Interactive demonstration of all models
+- `PYDANTIC_MODELS_SUMMARY.md` - Comprehensive implementation documentation
+
+**🌐 Model Features:**
+- **HousingPredictionRequest**: 8 housing features with custom validators and business logic
+- **PredictionResponse**: Prediction values with confidence intervals and model metadata
+- **BatchPredictionRequest/Response**: Batch processing with statistics and error handling
+- **ModelInfo**: Comprehensive model metadata with performance metrics and technical details
+- **ValidationErrorResponse**: Standardized error responses with detailed field information
+- **HealthCheckResponse**: System status with GPU information and dependency monitoring
+
+### Version 2.6 - FastAPI Service Foundation
 
 **🚀 Major New Features:**
 - **Production-Ready FastAPI Application**: Complete FastAPI service with comprehensive configuration management and middleware
