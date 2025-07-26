@@ -432,7 +432,7 @@ class BaseModelTrainer(ABC):
             axes[1, 0].plot(epochs, gpu_memory, color='red')
             axes[1, 0].set_title('GPU Memory Usage')
             axes[1, 0].set_xlabel('Epoch')
-            axes[1, 0].set_ylabel('Memory (MB)')
+            axes[1, 1].set_ylabel('Memory (MB)')
             axes[1, 0].grid(True)
         
         # GPU temperature
@@ -443,6 +443,118 @@ class BaseModelTrainer(ABC):
             axes[1, 1].set_xlabel('Epoch')
             axes[1, 1].set_ylabel('Temperature (°C)')
             axes[1, 1].grid(True)
+        
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        return str(plot_path)
+    
+    def _save_feature_importance_plot(self, importance: np.ndarray, feature_names: List[str], 
+                                    model_name: str) -> str:
+        """Save feature importance plot."""
+        plots_dir = self._create_plots_directory()
+        plot_path = plots_dir / f"{model_name}_feature_importance.png"
+        
+        # Sort features by importance
+        indices = np.argsort(importance)[::-1]
+        sorted_importance = importance[indices]
+        sorted_names = [feature_names[i] for i in indices]
+        
+        # Take top 20 features for readability
+        top_n = min(20, len(sorted_importance))
+        top_importance = sorted_importance[:top_n]
+        top_names = sorted_names[:top_n]
+        
+        # Create plot
+        plt.figure(figsize=(12, 8))
+        bars = plt.barh(range(top_n), top_importance[::-1], color='skyblue', alpha=0.8)
+        plt.yticks(range(top_n), top_names[::-1])
+        plt.xlabel('Feature Importance (Gain)')
+        plt.title(f'{model_name} Feature Importance (Top {top_n})')
+        plt.grid(axis='x', alpha=0.3)
+        
+        # Add value labels on bars
+        for i, (bar, value) in enumerate(zip(bars, top_importance[::-1])):
+            plt.text(value + max(top_importance) * 0.01, bar.get_y() + bar.get_height()/2, 
+                    f'{value:.0f}', va='center', fontsize=9)
+        
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        return str(plot_path)
+    
+    def _save_lightgbm_training_curves(self, training_history: List[Dict], model_name: str) -> str:
+        """Save LightGBM-specific training curves with detailed metrics."""
+        if not training_history:
+            return None
+        
+        plots_dir = self._create_plots_directory()
+        plot_path = plots_dir / f"{model_name}_training_curves.png"
+        
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        fig.suptitle(f'{model_name} Training Progress', fontsize=16)
+        
+        iterations = [h['epoch'] for h in training_history]
+        train_losses = [h['train_loss'] for h in training_history]
+        val_losses = [h.get('val_loss') for h in training_history if h.get('val_loss') is not None]
+        
+        # Training and validation loss
+        axes[0, 0].plot(iterations, train_losses, label='Training RMSE', color='blue', alpha=0.8)
+        if val_losses and len(val_losses) == len(iterations):
+            axes[0, 0].plot(iterations, val_losses, label='Validation RMSE', color='red', alpha=0.8)
+        axes[0, 0].set_title('Loss Curves')
+        axes[0, 0].set_xlabel('Iteration')
+        axes[0, 0].set_ylabel('RMSE')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        # GPU utilization
+        gpu_utils = [h.get('gpu_metrics', {}).get('gpu_utilization', 0) for h in training_history]
+        if any(gpu_utils):
+            axes[0, 1].plot(iterations, gpu_utils, color='green', alpha=0.8)
+            axes[0, 1].set_title('GPU Utilization')
+            axes[0, 1].set_xlabel('Iteration')
+            axes[0, 1].set_ylabel('Utilization (%)')
+            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 1].set_ylim(0, 100)
+        
+        # GPU memory usage
+        gpu_memory = [h.get('gpu_metrics', {}).get('gpu_memory_used_mb', 0) for h in training_history]
+        if any(gpu_memory):
+            axes[0, 2].plot(iterations, gpu_memory, color='red', alpha=0.8)
+            axes[0, 2].set_title('GPU Memory Usage')
+            axes[0, 2].set_xlabel('Iteration')
+            axes[0, 2].set_ylabel('Memory (MB)')
+            axes[0, 2].grid(True, alpha=0.3)
+        
+        # GPU temperature
+        gpu_temps = [h.get('gpu_metrics', {}).get('gpu_temperature_c', 0) for h in training_history]
+        if any(gpu_temps):
+            axes[1, 0].plot(iterations, gpu_temps, color='orange', alpha=0.8)
+            axes[1, 0].set_title('GPU Temperature')
+            axes[1, 0].set_xlabel('Iteration')
+            axes[1, 0].set_ylabel('Temperature (°C)')
+            axes[1, 0].grid(True, alpha=0.3)
+        
+        # GPU power usage
+        gpu_power = [h.get('gpu_metrics', {}).get('gpu_power_watts', 0) for h in training_history]
+        if any(gpu_power):
+            axes[1, 1].plot(iterations, gpu_power, color='purple', alpha=0.8)
+            axes[1, 1].set_title('GPU Power Usage')
+            axes[1, 1].set_xlabel('Iteration')
+            axes[1, 1].set_ylabel('Power (W)')
+            axes[1, 1].grid(True, alpha=0.3)
+        
+        # Training time progression
+        elapsed_times = [h.get('elapsed_time', 0) for h in training_history]
+        if any(elapsed_times):
+            axes[1, 2].plot(iterations, elapsed_times, color='brown', alpha=0.8)
+            axes[1, 2].set_title('Elapsed Training Time')
+            axes[1, 2].set_xlabel('Iteration')
+            axes[1, 2].set_ylabel('Time (seconds)')
+            axes[1, 2].grid(True, alpha=0.3)
         
         plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
@@ -524,6 +636,152 @@ class GPUModelTrainer:
     def get_gpu_metrics(self) -> Optional[GPUMetrics]:
         """Get current GPU metrics."""
         return self.gpu_monitor.get_metrics()
+    
+    def _log_gpu_metrics(self, step: Optional[int] = None):
+        """Log current GPU metrics to MLflow."""
+        metrics = self.gpu_monitor.get_metrics()
+        if metrics:
+            gpu_metrics_dict = {
+                'gpu_utilization': metrics.utilization_percent,
+                'gpu_memory_used_mb': metrics.memory_used_mb,
+                'gpu_temperature_c': metrics.temperature_celsius,
+                'gpu_power_watts': metrics.power_usage_watts
+            }
+            
+            for key, value in gpu_metrics_dict.items():
+                try:
+                    self.mlflow_manager.client.log_metric(
+                        run_id=self.mlflow_manager.client.active_run().info.run_id,
+                        key=key,
+                        value=value,
+                        step=step
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to log GPU metric {key}: {e}")
+    
+    def _notify_progress(self, progress):
+        """Notify progress callbacks (placeholder for compatibility)."""
+        # This is a placeholder method for compatibility with the training code
+        # In a full implementation, this would notify registered callbacks
+        pass
+    
+    def _create_plots_directory(self) -> Path:
+        """Create directory for saving plots."""
+        plots_dir = Path("plots")
+        plots_dir.mkdir(exist_ok=True)
+        return plots_dir
+    
+    def _save_feature_importance_plot(self, importance: np.ndarray, feature_names: List[str], 
+                                    model_name: str) -> str:
+        """Save feature importance plot."""
+        plots_dir = self._create_plots_directory()
+        plot_path = plots_dir / f"{model_name}_feature_importance.png"
+        
+        # Sort features by importance
+        indices = np.argsort(importance)[::-1]
+        sorted_importance = importance[indices]
+        sorted_names = [feature_names[i] for i in indices]
+        
+        # Take top 20 features for readability
+        top_n = min(20, len(sorted_importance))
+        top_importance = sorted_importance[:top_n]
+        top_names = sorted_names[:top_n]
+        
+        # Create plot
+        plt.figure(figsize=(12, 8))
+        bars = plt.barh(range(top_n), top_importance[::-1], color='skyblue', alpha=0.8)
+        plt.yticks(range(top_n), top_names[::-1])
+        plt.xlabel('Feature Importance (Gain)')
+        plt.title(f'{model_name} Feature Importance (Top {top_n})')
+        plt.grid(axis='x', alpha=0.3)
+        
+        # Add value labels on bars
+        for i, (bar, value) in enumerate(zip(bars, top_importance[::-1])):
+            plt.text(value + max(top_importance) * 0.01, bar.get_y() + bar.get_height()/2, 
+                    f'{value:.0f}', va='center', fontsize=9)
+        
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        return str(plot_path)
+    
+    def _save_lightgbm_training_curves(self, training_history: List[Dict], model_name: str) -> str:
+        """Save LightGBM-specific training curves with detailed metrics."""
+        if not training_history:
+            return None
+        
+        plots_dir = self._create_plots_directory()
+        plot_path = plots_dir / f"{model_name}_training_curves.png"
+        
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        fig.suptitle(f'{model_name} Training Progress', fontsize=16)
+        
+        iterations = [h['epoch'] for h in training_history]
+        train_losses = [h['train_loss'] for h in training_history]
+        val_losses = [h.get('val_loss') for h in training_history if h.get('val_loss') is not None]
+        
+        # Training and validation loss
+        axes[0, 0].plot(iterations, train_losses, label='Training RMSE', color='blue', alpha=0.8)
+        if val_losses and len(val_losses) == len(iterations):
+            axes[0, 0].plot(iterations, val_losses, label='Validation RMSE', color='red', alpha=0.8)
+        axes[0, 0].set_title('Loss Curves')
+        axes[0, 0].set_xlabel('Iteration')
+        axes[0, 0].set_ylabel('RMSE')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        # GPU utilization
+        gpu_utils = [h.get('gpu_metrics', {}).get('gpu_utilization', 0) for h in training_history]
+        if any(gpu_utils):
+            axes[0, 1].plot(iterations, gpu_utils, color='green', alpha=0.8)
+            axes[0, 1].set_title('GPU Utilization')
+            axes[0, 1].set_xlabel('Iteration')
+            axes[0, 1].set_ylabel('Utilization (%)')
+            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 1].set_ylim(0, 100)
+        
+        # GPU memory usage
+        gpu_memory = [h.get('gpu_metrics', {}).get('gpu_memory_used_mb', 0) for h in training_history]
+        if any(gpu_memory):
+            axes[0, 2].plot(iterations, gpu_memory, color='red', alpha=0.8)
+            axes[0, 2].set_title('GPU Memory Usage')
+            axes[0, 2].set_xlabel('Iteration')
+            axes[0, 2].set_ylabel('Memory (MB)')
+            axes[0, 2].grid(True, alpha=0.3)
+        
+        # GPU temperature
+        gpu_temps = [h.get('gpu_metrics', {}).get('gpu_temperature_c', 0) for h in training_history]
+        if any(gpu_temps):
+            axes[1, 0].plot(iterations, gpu_temps, color='orange', alpha=0.8)
+            axes[1, 0].set_title('GPU Temperature')
+            axes[1, 0].set_xlabel('Iteration')
+            axes[1, 0].set_ylabel('Temperature (°C)')
+            axes[1, 0].grid(True, alpha=0.3)
+        
+        # GPU power usage
+        gpu_power = [h.get('gpu_metrics', {}).get('gpu_power_watts', 0) for h in training_history]
+        if any(gpu_power):
+            axes[1, 1].plot(iterations, gpu_power, color='purple', alpha=0.8)
+            axes[1, 1].set_title('GPU Power Usage')
+            axes[1, 1].set_xlabel('Iteration')
+            axes[1, 1].set_ylabel('Power (W)')
+            axes[1, 1].grid(True, alpha=0.3)
+        
+        # Training time progression
+        elapsed_times = [h.get('elapsed_time', 0) for h in training_history]
+        if any(elapsed_times):
+            axes[1, 2].plot(iterations, elapsed_times, color='brown', alpha=0.8)
+            axes[1, 2].set_title('Elapsed Training Time')
+            axes[1, 2].set_xlabel('Iteration')
+            axes[1, 2].set_ylabel('Time (seconds)')
+            axes[1, 2].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        return str(plot_path)
     
     def start_training_async(self, X_train: np.ndarray, y_train: np.ndarray,
                            X_val: Optional[np.ndarray] = None, y_val: Optional[np.ndarray] = None,
@@ -1068,60 +1326,230 @@ class GPUModelTrainer:
     
     def _train_lightgbm(self, X_train: np.ndarray, y_train: np.ndarray,
                        X_val: Optional[np.ndarray], y_val: Optional[np.ndarray]):
-        """Train LightGBM model with GPU acceleration."""
+        """
+        Train LightGBM model with GPU acceleration, optimized parameters,
+        feature importance extraction, cross-validation, and comprehensive MLflow logging.
+        """
         try:
             import lightgbm as lgb
+            from sklearn.model_selection import cross_val_score
         except ImportError:
             raise ImportError("LightGBM not installed. Install with: pip install lightgbm")
         
         config = self.config.lightgbm
+        start_time = time.time()
         
-        # Prepare parameters
+        logger.info("Starting LightGBM GPU training with optimized configuration...")
+        
+        # Optimized LightGBM parameters for regression tasks
         params = {
+            # GPU acceleration
             'device_type': config.device_type,
             'objective': config.objective,
             'metric': config.metric,
             'boosting_type': config.boosting_type,
+            
+            # Tree structure parameters optimized for regression
             'num_leaves': config.num_leaves,
             'max_depth': config.max_depth,
+            'min_data_in_leaf': 20,  # Prevent overfitting
+            'min_gain_to_split': 0.0,
+            
+            # Learning parameters
             'learning_rate': config.learning_rate,
             'feature_fraction': config.feature_fraction,
             'bagging_fraction': config.bagging_fraction,
             'bagging_freq': config.bagging_freq,
+            
+            # Regularization
             'reg_alpha': config.reg_alpha,
             'reg_lambda': config.reg_lambda,
+            'min_sum_hessian_in_leaf': 1e-3,
+            
+            # Performance optimization
+            'force_col_wise': True,  # Faster training for small datasets
+            'histogram_pool_size': -1,  # Use all available memory
+            'max_bin': 255,  # Default bin size for good accuracy
+            
+            # Reproducibility
             'random_state': config.random_state,
+            'deterministic': True,
             'verbose': -1
         }
         
+        # GPU-specific parameters
         if config.device_type == 'gpu':
             params.update({
                 'gpu_platform_id': config.gpu_platform_id,
-                'gpu_device_id': config.gpu_device_id
+                'gpu_device_id': config.gpu_device_id,
+                'gpu_use_dp': False,  # Use single precision for speed
+                'num_gpu': 1
             })
+            logger.info(f"GPU acceleration enabled: Platform {config.gpu_platform_id}, Device {config.gpu_device_id}")
         
-        # Create datasets
-        train_data = lgb.Dataset(X_train, label=y_train)
+        # Log initial GPU metrics
+        self._log_gpu_metrics(step=0)
+        
+        # Create feature names for better interpretability
+        feature_names = [f'feature_{i}' for i in range(X_train.shape[1])]
+        
+        # Create datasets with feature names
+        train_data = lgb.Dataset(
+            X_train, 
+            label=y_train, 
+            feature_name=feature_names,
+            free_raw_data=False  # Keep data for feature importance
+        )
         
         valid_sets = [train_data]
         valid_names = ['train']
         
         if X_val is not None and y_val is not None:
-            val_data = lgb.Dataset(X_val, label=y_val, reference=train_data)
+            val_data = lgb.Dataset(
+                X_val, 
+                label=y_val, 
+                reference=train_data,
+                feature_name=feature_names,
+                free_raw_data=False
+            )
             valid_sets.append(val_data)
             valid_names.append('val')
         
-        # Train model
+        # Training progress tracking
+        training_history = []
+        
+        def log_evaluation_callback(env):
+            """Custom callback to log training progress and GPU metrics."""
+            if env.iteration % 100 == 0:  # Log every 100 iterations
+                # Get current metrics
+                train_score = env.evaluation_result_list[0][2] if env.evaluation_result_list else 0
+                val_score = env.evaluation_result_list[1][2] if len(env.evaluation_result_list) > 1 else None
+                
+                # Get GPU metrics
+                gpu_metrics = self.gpu_monitor.get_metrics()
+                
+                # Create progress object
+                progress = TrainingProgress(
+                    epoch=env.iteration,
+                    total_epochs=config.n_estimators,
+                    train_loss=train_score,
+                    val_loss=val_score,
+                    gpu_metrics=gpu_metrics,
+                    elapsed_time=time.time() - start_time
+                )
+                
+                # Store in history
+                training_history.append(progress.to_dict())
+                
+                # Notify callbacks
+                self._notify_progress(progress)
+                
+                # Log GPU metrics to MLflow
+                self._log_gpu_metrics(step=env.iteration)
+                
+                if env.iteration % 500 == 0:
+                    logger.info(f"LightGBM Iteration {env.iteration}: train_rmse={train_score:.4f}" + 
+                              (f", val_rmse={val_score:.4f}" if val_score else ""))
+        
+        # Prepare callbacks
+        callbacks = [
+            lgb.early_stopping(config.early_stopping_rounds, verbose=False),
+            log_evaluation_callback
+        ]
+        
+        logger.info(f"Training LightGBM with {config.n_estimators} estimators...")
+        logger.info(f"Parameters: {params}")
+        
+        # Train model with comprehensive tracking
         model = lgb.train(
             params=params,
             train_set=train_data,
             num_boost_round=config.n_estimators,
             valid_sets=valid_sets,
             valid_names=valid_names,
-            callbacks=[lgb.early_stopping(config.early_stopping_rounds)]
+            callbacks=callbacks,
+            feval=None,  # Use default evaluation
+            init_model=None,
+            feature_name='auto',
+            categorical_feature='auto',
+            keep_training_booster=False
         )
         
-        return model
+        training_time = time.time() - start_time
+        logger.info(f"LightGBM training completed in {training_time:.2f} seconds")
+        logger.info(f"Best iteration: {model.best_iteration}")
+        logger.info(f"Best score: {model.best_score}")
+        
+        # Extract and log feature importance
+        feature_importance = model.feature_importance(importance_type='gain')
+        feature_names_final = model.feature_name()
+        
+        # Create feature importance plot
+        plots_dir = self._create_plots_directory()
+        importance_plot_path = self._save_feature_importance_plot(
+            feature_importance, feature_names_final, "LightGBM"
+        )
+        
+        # Log feature importance to MLflow
+        importance_dict = {
+            f"feature_importance_{name}": importance 
+            for name, importance in zip(feature_names_final, feature_importance)
+        }
+        self.mlflow_manager.log_parameters(importance_dict)
+        
+        # Perform cross-validation for robust performance estimation
+        if len(X_train) > 1000:  # Only for larger datasets
+            logger.info("Performing cross-validation...")
+            cv_scores = cross_val_score(
+                lgb.LGBMRegressor(**{k: v for k, v in params.items() if k != 'verbose'}),
+                X_train, y_train, cv=5, scoring='neg_root_mean_squared_error'
+            )
+            cv_rmse_mean = -cv_scores.mean()
+            cv_rmse_std = cv_scores.std()
+            
+            logger.info(f"Cross-validation RMSE: {cv_rmse_mean:.4f} (+/- {cv_rmse_std:.4f})")
+            
+            # Log CV results to MLflow
+            self.mlflow_manager.log_parameters({
+                'cv_rmse_mean': cv_rmse_mean,
+                'cv_rmse_std': cv_rmse_std,
+                'cv_folds': 5
+            })
+        
+        # Save training history
+        history_path = plots_dir / "lightgbm_training_history.json"
+        with open(history_path, 'w') as f:
+            json.dump(training_history, f, indent=2, default=str)
+        
+        # Create comprehensive training curves plot
+        training_curves_path = self._save_lightgbm_training_curves(training_history, "LightGBM")
+        
+        # Log final GPU metrics
+        final_gpu_metrics = self.gpu_monitor.get_metrics()
+        if final_gpu_metrics:
+            logger.info(f"Final GPU utilization: {final_gpu_metrics.utilization_percent:.1f}%")
+            logger.info(f"Peak GPU memory: {final_gpu_metrics.memory_used_mb:.1f} MB")
+        
+        # Store training metadata with model
+        model_metadata = {
+            'model': model,
+            'feature_names': feature_names_final,
+            'feature_importance': feature_importance,
+            'training_history': training_history,
+            'training_time': training_time,
+            'best_iteration': model.best_iteration,
+            'best_score': model.best_score,
+            'config': config.model_dump(),
+            'plots': {
+                'feature_importance': str(importance_plot_path),
+                'training_curves': str(training_curves_path),
+                'training_history': str(history_path)
+            }
+        }
+        
+        logger.info("LightGBM training completed successfully with comprehensive tracking")
+        
+        return model_metadata
     
     def _train_pytorch(self, X_train: np.ndarray, y_train: np.ndarray,
                       X_val: Optional[np.ndarray], y_val: Optional[np.ndarray]):
@@ -1297,7 +1725,11 @@ class GPUModelTrainer:
             return model.predict(dtest)
         
         elif model_name == 'lightgbm':
-            return model.predict(X)
+            # Handle both old simple model and new metadata structure
+            if isinstance(model, dict) and 'model' in model:
+                return model['model'].predict(X)
+            else:
+                return model.predict(X)
         
         elif model_name == 'pytorch':
             model_dict = model

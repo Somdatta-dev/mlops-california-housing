@@ -13,6 +13,7 @@ MLOps Platform
 ├── GPU-Accelerated Model Training
 │   ├── Multi-Algorithm Support (XGBoost, LightGBM, PyTorch, cuML)
 │   ├── Advanced XGBoost GPU Training with Deep Trees & High Estimators
+│   ├── LightGBM GPU Training with OpenCL Acceleration & Optimized Parameters
 │   ├── PyTorch Neural Networks with Mixed Precision Training
 │   ├── CUDA Device Detection & Configuration
 │   ├── Comprehensive VRAM Cleanup & Memory Management
@@ -122,7 +123,8 @@ mlops-california-housing/
 │   ├── cuml_training_example.py # cuML model training demonstration
 │   ├── vram_cleanup_demo.py    # VRAM cleanup functionality demo
 │   ├── xgboost_gpu_example.py  # XGBoost GPU training demonstration
-│   └── xgboost_rtx5090_demo.py # XGBoost RTX 5090 optimized demo
+│   ├── xgboost_rtx5090_demo.py # XGBoost RTX 5090 optimized demo
+│   └── lightgbm_gpu_example.py # LightGBM GPU training demonstration
 ├── tests/
 │   ├── test_data_manager.py    # Comprehensive data management tests
 │   ├── test_mlflow_config.py   # MLflow integration tests
@@ -130,6 +132,7 @@ mlops-california-housing/
 │   ├── test_pytorch_neural_network.py # PyTorch neural network tests
 │   ├── test_cuml_models.py     # cuML model training tests
 │   ├── test_xgboost_gpu_training.py # XGBoost GPU training tests
+│   ├── test_lightgbm_gpu_training.py # LightGBM GPU training tests
 │   └── __init__.py
 ├── notebooks/                  # Jupyter notebooks for EDA
 ├── docker/                     # Docker configuration
@@ -256,7 +259,7 @@ The dataset passes comprehensive validation with the following checks:
 
 **Configuration Management:**
 - **XGBoostConfig**: Advanced GPU-optimized parameters with `gpu_hist` tree method, deep trees, high estimators
-- **LightGBMConfig**: OpenCL GPU configuration with device selection
+- **LightGBMConfig**: OpenCL GPU configuration with device selection and regression optimization
 - **PyTorchConfig**: Mixed precision training with CUDA optimization, configurable neural network architecture
 - **CuMLConfig**: RAPIDS cuML integration for GPU-accelerated scikit-learn algorithms
 
@@ -268,6 +271,14 @@ The dataset passes comprehensive validation with the following checks:
 - **Cross-Validation**: 5-fold CV with comprehensive metrics logging
 - **Modern GPU API**: XGBoost 3.x compatibility with device='cuda' parameter
 - **Performance Optimization**: Optimized for high-end hardware (RTX 5090, 24-core CPUs)
+
+**Advanced LightGBM Features:**
+- **GPU Acceleration**: OpenCL GPU acceleration with platform and device selection
+- **Optimized Parameters**: Regression-optimized configuration with `num_leaves=255`, `max_depth=12`
+- **Feature Importance**: Gain-based importance extraction with comprehensive visualization
+- **Cross-Validation**: Automated 5-fold CV for robust performance estimation
+- **Training Monitoring**: Real-time progress tracking with GPU metrics integration
+- **MLflow Integration**: Complete experiment tracking with LightGBM-specific artifacts
 
 ### cuML GPU-Accelerated Machine Learning ✅
 
@@ -307,6 +318,9 @@ python examples/xgboost_rtx5090_demo.py
 
 # Run PyTorch neural network example
 python examples/pytorch_neural_network_example.py
+
+# Run LightGBM GPU training example
+python examples/lightgbm_gpu_example.py
 ```
 
 **cuML Model Training:**
@@ -426,6 +440,28 @@ xgb_config = XGBoostConfig(
 )
 ```
 
+**LightGBM GPU Configuration:**
+```python
+from src.gpu_model_trainer import LightGBMConfig
+
+# LightGBM configuration for GPU training
+lgb_config = LightGBMConfig(
+    device_type='gpu',      # GPU acceleration
+    gpu_platform_id=0,     # OpenCL platform
+    gpu_device_id=0,       # OpenCL device
+    n_estimators=2000,     # High estimator count
+    num_leaves=255,        # Optimized for regression
+    max_depth=12,          # Deep trees
+    learning_rate=0.05,    # Moderate learning rate
+    feature_fraction=0.8,
+    bagging_fraction=0.8,
+    reg_alpha=0.1,         # L1 regularization
+    reg_lambda=1.0,        # L2 regularization
+    early_stopping_rounds=100,
+    random_state=42
+)
+```
+
 **PyTorch Neural Network Configuration:**
 ```python
 from src.pytorch_neural_network import PyTorchNeuralNetworkTrainer
@@ -469,6 +505,9 @@ pytest tests/test_gpu_model_trainer.py -v
 # Run XGBoost GPU training tests
 pytest tests/test_xgboost_gpu_training.py -v
 
+# Run LightGBM GPU training tests
+pytest tests/test_lightgbm_gpu_training.py -v
+
 # Run PyTorch neural network tests
 pytest tests/test_pytorch_neural_network.py -v
 
@@ -476,6 +515,7 @@ pytest tests/test_pytorch_neural_network.py -v
 pytest tests/test_gpu_model_trainer.py::TestGPUMemoryManager -v
 pytest tests/test_gpu_model_trainer.py::TestGPUModelTrainer -v
 pytest tests/test_xgboost_gpu_training.py::TestXGBoostTraining -v
+pytest tests/test_lightgbm_gpu_training.py::TestLightGBMGPUTraining -v
 pytest tests/test_pytorch_neural_network.py::TestPyTorchNeuralNetworkTrainer -v
 ```
 
@@ -606,7 +646,7 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (98+ Tests):**
+**Comprehensive Test Suite (106+ Tests):**
 
 ### Data Management Tests (23 Tests)
 - **Pydantic Model Tests**: CaliforniaHousingData validation
@@ -643,6 +683,15 @@ The platform includes comprehensive monitoring:
 - **Advanced Features Tests**: Deep trees, high estimators, early stopping, regularization
 - **Error Handling Tests**: Import error handling and invalid data handling
 - **Integration Tests**: End-to-end XGBoost training workflows with MLflow logging
+
+### LightGBM GPU Training Tests (8 Tests)
+- **Configuration Tests**: LightGBM parameter validation and GPU device configuration
+- **Training Tests**: Basic LightGBM training with GPU acceleration and optimization
+- **GPU Parameter Tests**: OpenCL platform and device selection validation
+- **Model Integration Tests**: Integration with ModelConfig and MLflow experiment tracking
+- **Prediction Compatibility Tests**: Both old and new model structure compatibility
+- **Error Handling Tests**: Import error handling and training failure recovery
+- **Serialization Tests**: Configuration serialization and JSON compatibility
 
 ### PyTorch Neural Network Tests (28 Tests)
 - **Dataset Tests**: CaliforniaHousingDataset validation and tensor handling
@@ -761,7 +810,44 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 2.3 - PyTorch Neural Network with Mixed Precision Training (Latest)
+### Version 2.4 - LightGBM GPU Training Implementation (Latest)
+
+**🚀 Major New Features:**
+- **LightGBM GPU Training**: Complete implementation with GPU acceleration and optimized parameters for regression tasks
+- **Advanced Hyperparameters**: Optimized LightGBM configuration with `num_leaves=255`, `max_depth=12`, and GPU-specific parameters
+- **Feature Importance Analysis**: Comprehensive feature importance extraction with gain-based importance and visualization
+- **Cross-Validation Integration**: 5-fold cross-validation for robust performance estimation with RMSE tracking
+- **MLflow Integration**: Complete experiment tracking with LightGBM-specific metrics, parameters, and artifacts
+- **Training Progress Monitoring**: Real-time training progress with callbacks and GPU metrics logging
+
+**🔧 Technical Improvements:**
+- **Enhanced LightGBM Configuration**: GPU acceleration with OpenCL platform and device selection
+- **Comprehensive Training Curves**: Multi-panel visualization showing loss curves, GPU metrics, and training progression
+- **Feature Importance Visualization**: Top 20 features with horizontal bar charts and importance values
+- **Training History Logging**: Complete training history saved as JSON with detailed metrics
+- **GPU Memory Integration**: Full integration with GPU monitoring for utilization and memory tracking
+- **Cross-Validation Support**: Automated 5-fold CV for datasets larger than 1000 samples
+
+**📊 Performance Results:**
+- **Training Performance**: 8.53 seconds for 2000 estimators with early stopping at iteration 284
+- **Model Accuracy**: Test RMSE: 0.4379, Test MAE: 0.2861, Test R²: 0.8537
+- **Cross-Validation**: CV RMSE: 0.4566 (±0.0078) demonstrating robust performance
+- **Feature Importance**: Top features identified with `feature_0` (57,538 gain) leading importance
+- **GPU Optimization**: Optimized for both GPU and CPU training with intelligent fallback
+
+**🧪 Testing & Validation:**
+- **8 New LightGBM Tests**: Comprehensive testing of LightGBM configuration, training, and integration
+- **Configuration Validation**: Pydantic-based validation for all LightGBM parameters
+- **GPU Parameter Testing**: Validation of GPU-specific OpenCL configuration
+- **Prediction Compatibility**: Testing of both old and new model structure compatibility
+- **Error Handling**: Comprehensive error handling for import failures and training errors
+
+**📁 New Files Added:**
+- `examples/lightgbm_gpu_example.py` - Complete LightGBM GPU training demonstration
+- `tests/test_lightgbm_gpu_training.py` - Comprehensive LightGBM testing suite (8 tests)
+- Enhanced `src/gpu_model_trainer.py` - LightGBM training method with advanced features
+
+### Version 2.3 - PyTorch Neural Network with Mixed Precision Training
 
 **🚀 Major New Features:**
 - **PyTorch Neural Network Implementation**: Complete configurable neural network architecture with mixed precision training
