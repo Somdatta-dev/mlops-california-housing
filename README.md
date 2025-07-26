@@ -34,10 +34,13 @@ MLOps Platform
 │   ├── Comprehensive Experiment Management
 │   ├── Model Registry with Versioning
 │   └── GPU Metrics & Artifact Logging
-├── API Deployment (FastAPI)
-│   ├── Prediction Endpoints
-│   ├── Model Serving
-│   └── Input Validation
+├── FastAPI Service Foundation
+│   ├── Production-Ready API with Configuration Management
+│   ├── Comprehensive Health Check Endpoints with System Status
+│   ├── MLflow Model Registry Integration with Caching & Fallback
+│   ├── Prometheus Metrics Integration with GPU Monitoring
+│   ├── Structured Logging for All API Operations
+│   └── Advanced Error Handling & Middleware
 ├── CI/CD Pipeline (GitHub Actions)
 │   ├── Automated Testing
 │   ├── Docker Build & Deploy
@@ -88,6 +91,23 @@ dvc pull
 python src/data_validation.py
 ```
 
+### 4. Start FastAPI Service
+```bash
+# Run FastAPI service foundation demo
+python examples/fastapi_foundation_demo.py
+
+# Start the API server
+python src/api/run_server.py
+
+# Access the API
+curl http://localhost:8000/health/
+curl http://localhost:8000/health/detailed
+curl http://localhost:8000/info
+
+# View documentation (debug mode)
+# http://localhost:8000/docs
+```
+
 ## 📊 Dataset Information
 
 **California Housing Dataset**
@@ -115,6 +135,14 @@ mlops-california-housing/
 │   ├── processed/              # Processed data splits (DVC tracked)
 │   └── interim/                # Intermediate processing files
 ├── src/
+│   ├── api/                    # FastAPI service foundation
+│   │   ├── main.py            # Main FastAPI application
+│   │   ├── config.py          # Configuration management
+│   │   ├── metrics.py         # Prometheus metrics integration
+│   │   ├── model_loader.py    # MLflow Model Registry integration
+│   │   ├── health.py          # Health check endpoints
+│   │   ├── run_server.py      # Server startup script
+│   │   └── README.md          # FastAPI service documentation
 │   ├── data_manager.py         # Core data management with DVC integration
 │   ├── data_loader.py          # Data loading utilities
 │   ├── data_validation.py      # Data quality validation
@@ -125,6 +153,7 @@ mlops-california-housing/
 │   ├── mlflow_config.py        # MLflow experiment tracking & model registry
 │   └── setup_dvc_remote.py     # DVC remote configuration
 ├── examples/
+│   ├── fastapi_foundation_demo.py # FastAPI service foundation demonstration
 │   ├── mlflow_example.py       # MLflow integration demonstration
 │   ├── gpu_trainer_example.py  # GPU model trainer demonstration
 │   ├── pytorch_neural_network_example.py # PyTorch neural network training demonstration
@@ -135,6 +164,7 @@ mlops-california-housing/
 │   ├── xgboost_rtx5090_demo.py # XGBoost RTX 5090 optimized demo
 │   └── lightgbm_gpu_example.py # LightGBM GPU training demonstration
 ├── tests/
+│   ├── test_api_foundation.py  # FastAPI service foundation tests
 │   ├── test_data_manager.py    # Comprehensive data management tests
 │   ├── test_mlflow_config.py   # MLflow integration tests
 │   ├── test_gpu_model_trainer.py # GPU training infrastructure tests
@@ -705,6 +735,128 @@ pytest tests/test_lightgbm_gpu_training.py::TestLightGBMGPUTraining -v
 pytest tests/test_pytorch_neural_network.py::TestPyTorchNeuralNetworkTrainer -v
 ```
 
+## 🌐 FastAPI Service Foundation
+
+### Production-Ready API Service ✅
+
+**Comprehensive FastAPI Implementation:**
+- **Configuration Management**: Environment-based settings with Pydantic validation
+- **Health Check System**: Multiple endpoints for system, model, and dependency monitoring
+- **MLflow Integration**: Model Registry integration with caching and fallback mechanisms
+- **Prometheus Metrics**: Comprehensive metrics collection with GPU monitoring
+- **Structured Logging**: JSON-based logging with request/response tracking
+- **Error Handling**: Advanced exception handling with proper HTTP responses
+
+### Key Features
+
+**FastAPI Application:**
+- **Production Configuration**: Environment-based configuration with validation
+- **Middleware Stack**: CORS, request timing, logging, and error handling
+- **Lifespan Management**: Proper startup and shutdown with resource cleanup
+- **Documentation**: Automatic OpenAPI documentation with Swagger UI and ReDoc
+
+**Health Check System:**
+- **Basic Health**: Simple health status endpoint
+- **Detailed Health**: Comprehensive system information including CPU, memory, disk usage
+- **Model Health**: Current model status, performance metrics, and availability
+- **GPU Health**: GPU information, utilization, memory, temperature, and power usage
+- **Dependency Health**: MLflow tracking server and database connectivity checks
+
+**Prometheus Metrics:**
+- **API Metrics**: Request count, duration, status codes by endpoint
+- **Prediction Metrics**: Prediction count, duration, value distribution by model version
+- **GPU Metrics**: Utilization, memory usage, temperature, power consumption
+- **System Metrics**: Error tracking, database operations, model status
+- **Background Monitoring**: Automatic GPU metrics collection with configurable intervals
+
+**Model Loading System:**
+- **MLflow Integration**: Direct integration with Model Registry
+- **Caching System**: TTL-based model caching to improve performance
+- **Fallback Mechanisms**: Multiple model stages and URI fallbacks
+- **Validation**: Model performance validation against thresholds
+- **Thread Safety**: Safe concurrent access to models and cache
+
+### FastAPI Usage
+
+**Starting the Server:**
+```bash
+# Using the run script
+python src/api/run_server.py
+
+# With custom options
+python src/api/run_server.py --host 127.0.0.1 --port 9000 --debug --reload
+
+# Using uvicorn directly
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Testing the Service:**
+```bash
+# Run the comprehensive demo
+python examples/fastapi_foundation_demo.py
+
+# Test health endpoints
+curl http://localhost:8000/health/
+curl http://localhost:8000/health/detailed
+curl http://localhost:8000/health/model
+curl http://localhost:8000/health/system
+
+# Check metrics
+curl http://localhost:8000/metrics
+
+# API information
+curl http://localhost:8000/info
+```
+
+**Configuration:**
+```bash
+# Environment variables (.env file)
+API_HOST=0.0.0.0
+API_PORT=8000
+API_DEBUG=false
+MODEL_NAME=california-housing-model
+MODEL_STAGE=Production
+MLFLOW_TRACKING_URI=http://localhost:5000
+ENABLE_PROMETHEUS=true
+PROMETHEUS_PORT=8001
+LOG_LEVEL=INFO
+```
+
+**Programmatic Usage:**
+```python
+from src.api.config import get_api_config, get_model_config
+from src.api.metrics import initialize_metrics
+from src.api.model_loader import initialize_model_loader
+from src.api.main import create_app
+
+# Get configurations
+api_config = get_api_config()
+model_config = get_model_config()
+
+# Initialize metrics
+metrics = initialize_metrics(start_server=True, server_port=8001)
+
+# Initialize model loader
+model_loader = initialize_model_loader(api_config, model_config, metrics)
+
+# Create FastAPI app
+app = create_app()
+
+# The app is ready to serve requests
+```
+
+**API Testing:**
+```bash
+# Run FastAPI foundation tests
+pytest tests/test_api_foundation.py -v
+
+# Test specific components
+pytest tests/test_api_foundation.py::TestAPIConfig -v
+pytest tests/test_api_foundation.py::TestPrometheusMetrics -v
+pytest tests/test_api_foundation.py::TestModelLoader -v
+pytest tests/test_api_foundation.py::TestFastAPIApp -v
+```
+
 ## 🧪 MLflow Experiment Tracking
 
 ### Comprehensive MLflow Integration ✅
@@ -832,7 +984,7 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (120+ Tests):**
+**Comprehensive Test Suite (140+ Tests):**
 
 ### Data Management Tests (23 Tests)
 - **Pydantic Model Tests**: CaliforniaHousingData validation
@@ -899,6 +1051,14 @@ The platform includes comprehensive monitoring:
 - **MLflow Integration Tests**: Best model registration and Model Registry integration
 - **Integration Tests**: End-to-end model comparison workflows with real models
 
+### FastAPI Service Foundation Tests (20 Tests)
+- **Configuration Tests**: APIConfig and ModelConfig validation with environment variables
+- **Prometheus Metrics Tests**: Metrics collection, GPU monitoring, and background threads
+- **Model Loader Tests**: MLflow integration, caching, fallback mechanisms, and thread safety
+- **Health Check Tests**: System information, GPU status, model health, and dependency checks
+- **FastAPI Application Tests**: Endpoint functionality, error handling, and middleware
+- **Integration Tests**: End-to-end FastAPI workflows with real components
+
 ```bash
 # Run all tests
 pytest tests/ -v
@@ -909,6 +1069,9 @@ pytest tests/test_data_manager.py -v
 # Run MLflow tests
 pytest tests/test_mlflow_config.py -v
 
+# Run FastAPI foundation tests
+pytest tests/test_api_foundation.py -v
+
 # Run specific test classes
 pytest tests/test_data_manager.py::TestCaliforniaHousingData -v
 pytest tests/test_mlflow_config.py::TestMLflowExperimentManager -v
@@ -917,12 +1080,17 @@ pytest tests/test_pytorch_neural_network.py::TestHousingNeuralNetwork -v
 pytest tests/test_pytorch_neural_network.py::TestPyTorchNeuralNetworkTrainer -v
 pytest tests/test_model_comparison.py::TestModelComparisonSystem -v
 pytest tests/test_model_comparison.py::TestModelSelectionCriteria -v
+pytest tests/test_api_foundation.py::TestAPIConfig -v
+pytest tests/test_api_foundation.py::TestPrometheusMetrics -v
+pytest tests/test_api_foundation.py::TestModelLoader -v
+pytest tests/test_api_foundation.py::TestFastAPIApp -v
 
 # Run with coverage
 pytest --cov=src tests/
 ```
 
 **Test Coverage:**
+- ✅ **FastAPI Service Foundation**: Complete API service testing with configuration, metrics, health checks
 - ✅ **Data Management**: 100% coverage of core functionality
 - ✅ **MLflow Integration**: 100% coverage with cross-platform support
 - ✅ **GPU Training Infrastructure**: Comprehensive VRAM cleanup and device management testing
@@ -934,42 +1102,102 @@ pytest --cov=src tests/
 
 ## 📚 API Documentation
 
-Once the API is implemented, documentation will be available at:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+The FastAPI service provides comprehensive API documentation:
+- **Swagger UI**: http://localhost:8000/docs (debug mode)
+- **ReDoc**: http://localhost:8000/redoc (debug mode)
+- **OpenAPI JSON**: http://localhost:8000/openapi.json (debug mode)
+
+### Available Endpoints
+
+**Health Checks:**
+- `GET /health/` - Basic health status
+- `GET /health/detailed` - Comprehensive health information
+- `GET /health/model` - Model status and performance
+- `GET /health/system` - System resource information
+- `GET /health/gpu` - GPU information and metrics
+- `POST /health/model/reload` - Model reload functionality
+
+**Monitoring:**
+- `GET /metrics` - Prometheus metrics
+- `GET /info` - API information and available endpoints
+
+**Core:**
+- `GET /` - Root endpoint
 
 ## 🚀 Deployment
 
 ### Local Development
 ```bash
+# Setup project
 python setup_project.py
-uvicorn src.api.main:app --reload
+
+# Start FastAPI server
+python src/api/run_server.py
+
+# Or with uvicorn directly
+uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Production (Docker)
+### Production Deployment
 ```bash
-docker-compose up -d
+# Start production server
+python src/api/run_server.py --host 0.0.0.0 --port 8000
+
+# With environment configuration
+API_DEBUG=false API_HOST=0.0.0.0 API_PORT=8000 python src/api/run_server.py
 ```
 
-### Cloud Deployment
-- AWS EC2 with Docker
-- Google Cloud Run
-- Azure Container Instances
+### Docker Support (Future)
+```bash
+# Build Docker image
+docker build -t mlops-housing .
+
+# Run container
+docker run -p 8000:8000 mlops-housing
+```
+
+### Cloud Deployment Options
+- **AWS EC2**: Deploy with Docker and load balancer
+- **Google Cloud Run**: Serverless container deployment
+- **Azure Container Instances**: Managed container service
+- **Kubernetes**: Scalable orchestration with Helm charts
 
 ## 🔧 Configuration
 
 Environment variables (`.env`):
 ```bash
-# MLflow Configuration
-MLFLOW_TRACKING_URI=http://localhost:5000
-MLFLOW_EXPERIMENT_NAME=california-housing-prediction
-
-# API Configuration  
+# FastAPI Configuration
 API_HOST=0.0.0.0
 API_PORT=8000
+API_DEBUG=false
+API_VERSION=1.0.0
+
+# Model Configuration
+MODEL_NAME=california-housing-model
+MODEL_STAGE=Production
+MODEL_FALLBACK_STAGE=Staging
+
+# MLflow Configuration
+MLFLOW_TRACKING_URI=http://localhost:5000
+MLFLOW_REGISTRY_URI=http://localhost:5000
+MLFLOW_EXPERIMENT_NAME=california-housing-prediction
+
+# Monitoring Configuration
+ENABLE_PROMETHEUS=true
+PROMETHEUS_PORT=8001
+LOG_LEVEL=INFO
+ENABLE_STRUCTURED_LOGGING=true
+
+# Performance Configuration
+MAX_BATCH_SIZE=100
+REQUEST_TIMEOUT=30.0
 
 # Database Configuration
-DATABASE_URL=sqlite:///./mlops_platform.db
+DATABASE_URL=sqlite:///./predictions.db
+
+# Security Configuration
+CORS_ORIGINS=*
+API_KEY_HEADER=X-API-Key
 ```
 
 
@@ -1009,7 +1237,64 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 2.5 - Model Comparison and Selection System (Latest)
+### Version 2.6 - FastAPI Service Foundation (Latest)
+
+**🚀 Major New Features:**
+- **Production-Ready FastAPI Application**: Complete FastAPI service with comprehensive configuration management and middleware
+- **Advanced Health Check System**: Multiple health endpoints covering system status, model availability, GPU information, and dependency checks
+- **MLflow Model Registry Integration**: Model loading utilities with caching, fallback mechanisms, and performance validation
+- **Prometheus Metrics Integration**: Comprehensive metrics collection including API requests, predictions, GPU monitoring, and system metrics
+- **Structured Logging System**: JSON-based structured logging with request/response tracking and error monitoring
+- **Advanced Error Handling**: Comprehensive exception handling with proper HTTP status codes and detailed error responses
+
+**🔧 Technical Improvements:**
+- **APIConfig & ModelConfig Classes**: Pydantic-based configuration with environment variable support and validation
+- **PrometheusMetrics Class**: Extensive metrics collection with GPU monitoring, background threads, and automatic cleanup
+- **ModelLoader Class**: MLflow integration with model caching, fallback stages, and thread-safe operations
+- **Health Check Endpoints**: System info, GPU status, model health, and dependency monitoring
+- **FastAPI Middleware**: CORS, request timing, logging, and error handling middleware
+- **Server Management**: Production-ready server startup with command-line options and graceful shutdown
+
+**📊 Performance Features:**
+- **Model Caching**: TTL-based model caching to avoid repeated MLflow loading
+- **Background Monitoring**: GPU metrics collection with configurable intervals
+- **Request Timing**: Automatic request duration tracking and performance metrics
+- **Memory Management**: Integration with existing GPU memory cleanup systems
+- **Fallback Mechanisms**: Multiple fallback URIs for MLflow and configuration resilience
+
+**🧪 Testing & Validation:**
+- **Comprehensive Test Suite**: Full testing of all FastAPI components with mock integrations
+- **Configuration Testing**: Environment variable override and validation testing
+- **Metrics Testing**: Prometheus metrics collection and GPU monitoring validation
+- **Health Check Testing**: System information retrieval and endpoint functionality
+- **Integration Testing**: End-to-end FastAPI application testing with real components
+
+**📁 New Files Added:**
+- `src/api/` - Complete FastAPI service foundation directory
+- `src/api/main.py` - Main FastAPI application with middleware and lifespan management
+- `src/api/config.py` - Configuration management with environment support
+- `src/api/metrics.py` - Prometheus metrics integration with GPU monitoring
+- `src/api/model_loader.py` - MLflow Model Registry integration with caching
+- `src/api/health.py` - Comprehensive health check endpoints
+- `src/api/run_server.py` - Server startup script with command-line options
+- `src/api/README.md` - Detailed FastAPI service documentation
+- `examples/fastapi_foundation_demo.py` - Complete service foundation demonstration
+- `tests/test_api_foundation.py` - Comprehensive FastAPI testing suite
+
+**🌐 API Endpoints:**
+- `GET /` - Root endpoint
+- `GET /health/` - Basic health check
+- `GET /health/detailed` - Comprehensive health information
+- `GET /health/model` - Model status and performance
+- `GET /health/system` - System resource information
+- `GET /health/gpu` - GPU information and metrics
+- `POST /health/model/reload` - Model reload functionality
+- `GET /metrics` - Prometheus metrics endpoint
+- `GET /info` - API information and available endpoints
+- `GET /docs` - Swagger UI documentation (debug mode)
+- `GET /redoc` - ReDoc documentation (debug mode)
+
+### Version 2.5 - Model Comparison and Selection System
 
 **🚀 Major New Features:**
 - **Comprehensive Model Comparison**: Automated comparison across all 5 trained models (cuML Linear Regression, cuML Random Forest, XGBoost, PyTorch Neural Network, LightGBM)
