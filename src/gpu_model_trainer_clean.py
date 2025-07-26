@@ -45,6 +45,7 @@ except ImportError:
 
 # MLflow integration
 from .mlflow_config import MLflowExperimentManager, ExperimentMetrics, ModelArtifacts
+from .pytorch_neural_network import PyTorchNeuralNetworkTrainer, HousingNeuralNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +352,108 @@ class GPUModelTrainerWithCleanup:
             'swish': nn.SiLU()
         }
         return activations.get(activation, nn.ReLU())
+    
+    def train_pytorch_neural_network(self, X_train: np.ndarray, y_train: np.ndarray,
+                                   X_val: Optional[np.ndarray] = None, 
+                                   y_val: Optional[np.ndarray] = None) -> Tuple[HousingNeuralNetwork, Dict[str, Any]]:
+        """
+        Train PyTorch neural network with mixed precision, early stopping, and comprehensive logging.
+        
+        Args:
+            X_train: Training features
+            y_train: Training targets
+            X_val: Validation features (optional)
+            y_val: Validation targets (optional)
+            
+        Returns:
+            Tuple of (trained_model, training_results)
+        """
+        logger.info("Starting PyTorch neural network training with mixed precision...")
+        
+        start_time = time.time()
+        
+        # Use GPU memory context for automatic cleanup
+        with GPUMemoryManager.gpu_memory_context():
+            try:
+                # Convert PyTorchConfig to dictionary for trainer
+                pytorch_config_dict = self.config.pytorch.model_dump()
+                
+                # Create PyTorch trainer
+                pytorch_trainer = PyTorchNeuralNetworkTrainer(
+                    config=pytorch_config_dict,
+                    mlflow_manager=self.mlflow_manager
+                )
+                
+                # Train the model
+                trained_model = pytorch_trainer.train(X_train, y_train, X_val, y_val)
+                
+                # Calculate final metrics
+                train_predictions = pytorch_trainer.predict(trained_model, X_train)
+                train_metrics = self._calculate_metrics(y_train, train_predictions)
+                
+                val_metrics = {}
+                if X_val is not None and y_val is not None:
+                    val_predictions = pytorch_trainer.predict(trained_model, X_val)
+                    val_metrics = self._calculate_metrics(y_val, val_predictions)
+                
+                # Get model info
+                model_info = trained_model.get_model_info()
+                
+                # Save training curves
+                plots_dir = self._create_plots_directory()
+                curves_path = plots_dir / "PyTorch_training_curves.png"
+                pytorch_trainer.save_training_curves(str(curves_path))
+                
+                # Save model checkpoint
+                checkpoint_path = plots_dir / "pytorch_model_checkpoint.pth"
+                pytorch_trainer.save_model_checkpoint(trained_model, str(checkpoint_path))
+                
+                # Get final GPU metrics
+                gpu_metrics = self.get_gpu_metrics()
+                
+                # Prepare training results
+                training_results = {
+                    'model_info': model_info,
+                    'train_metrics': train_metrics,
+                    'val_metrics': val_metrics,
+                    'training_time': time.time() - start_time,
+                    'training_history': [m.to_dict() for m in pytorch_trainer.training_history],
+                    'curves_plot_path': str(curves_path),
+                    'checkpoint_path': str(checkpoint_path),
+                    'gpu_metrics': gpu_metrics.to_dict() if gpu_metrics else None,
+                    'mixed_precision_used': pytorch_trainer.use_mixed_precision,
+                    'device_used': str(pytorch_trainer.device)
+                }
+                
+                logger.info(f"PyTorch training completed successfully in {training_results['training_time']:.2f} seconds")
+                logger.info(f"Final train RMSE: {train_metrics['rmse']:.4f}")
+                if val_metrics:
+                    logger.info(f"Final validation RMSE: {val_metrics['rmse']:.4f}")
+                logger.info(f"Model parameters: {model_info['total_parameters']:,}")
+                logger.info(f"Mixed precision: {pytorch_trainer.use_mixed_precision}")
+                
+                return trained_model, training_results
+                
+            except Exception as e:
+                logger.error(f"PyTorch training failed: {e}")
+                raise
+    
+    def predict_pytorch(self, model: HousingNeuralNetwork, X: np.ndarray) -> np.ndarray:
+        """
+        Make predictions using trained PyTorch model.
+        
+        Args:
+            model: Trained PyTorch model
+            X: Features for prediction
+            
+        Returns:
+            Predictions array
+        """
+        # Create temporary trainer for prediction
+        pytorch_config_dict = self.config.pytorch.model_dump()
+        pytorch_trainer = PyTorchNeuralNetworkTrainer(config=pytorch_config_dict)
+        
+        return pytorch_trainer.predict(model, X)
 
 
 # For backward compatibility, alias the enhanced trainer
