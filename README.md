@@ -62,9 +62,12 @@ MLOps Platform
 │   ├── Docker Build & Deploy
 │   └── Quality Gates
 └── Monitoring & Logging
+    ├── Prometheus Metrics Integration with GPU Monitoring
+    ├── Comprehensive System Health Monitoring with Real-time Metrics
+    ├── Background Task Scheduling for Automated Metrics Collection
+    ├── Custom Model Performance and Business Metrics
     ├── Prediction Logging with Database Persistence
     ├── Model Performance Tracking with Historical Data
-    ├── System Health Monitoring with Metrics Collection
     └── Database Health Monitoring and Maintenance
 ```
 
@@ -126,6 +129,10 @@ python src/api/run_server.py
 curl http://localhost:8000/health/
 curl http://localhost:8000/health/detailed
 curl http://localhost:8000/info
+
+# Check Prometheus metrics
+curl http://localhost:8000/metrics
+# Or access dedicated metrics server: http://localhost:8001
 
 # Test prediction endpoints
 curl -X POST http://localhost:8000/predict/ \
@@ -241,6 +248,9 @@ mlops-california-housing/
 ```bash
 # Run Pydantic models demonstration
 python examples/pydantic_models_demo.py
+
+# Run Prometheus metrics demonstration
+python examples/prometheus_metrics_demo.py
 
 # Run complete data management pipeline
 python src/data_manager.py
@@ -1209,16 +1219,64 @@ docker run -p 8000:8000 mlops-housing
 
 ## 🔍 Monitoring & Logging
 
-The platform includes comprehensive monitoring:
+The platform includes comprehensive monitoring and observability:
+
+### Prometheus Metrics Integration ✅
+
+**Complete Metrics Collection:**
+
+- **API Performance Metrics**: Request count, duration, status codes by method and endpoint
+- **Prediction Metrics**: Prediction count, duration, value distribution by model version
+- **GPU Monitoring**: Real-time GPU utilization, memory, temperature, power consumption
+- **Model Performance**: Accuracy, RMSE, MAE, R² scores, prediction latency percentiles
+- **System Health**: CPU, memory, disk usage, API health status, active connections
+- **Custom Business Metrics**: Daily predictions, model drift detection, error tracking
+
+**Key Features:**
+
+- **Real-time GPU Monitoring**: nvidia-ml-py integration with multi-GPU support
+- **Background Task Scheduling**: Automated metrics collection with configurable intervals
+- **Prometheus Server**: Dedicated metrics server on port 8001 for scraping
+- **Grafana Compatibility**: Metrics designed for professional dashboards
+- **Thread-safe Operations**: Safe concurrent access with proper cleanup
+
+**Usage Examples:**
+
+```bash
+# Run Prometheus metrics demo
+python examples/prometheus_metrics_demo.py
+
+# Access metrics endpoints
+curl http://localhost:8001  # Prometheus format
+curl http://localhost:8000/metrics  # API endpoint
+
+# Sample Prometheus queries
+rate(api_requests_total[5m])
+histogram_quantile(0.95, prediction_duration_seconds_bucket)
+gpu_utilization_percent
+model_accuracy_score{model_version="v1.2.3"}
+```
+
+### Additional Monitoring Features
 
 - **Data Quality**: Automated validation reports
 - **Model Performance**: MLflow experiment tracking
 - **API Metrics**: Request/response logging
 - **System Health**: Resource usage monitoring
+- **Database Health**: Connection monitoring and query performance
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (221+ Tests):**
+**Comprehensive Test Suite (246+ Tests):**
+
+### Prometheus Metrics Tests (25 Tests)
+
+- **PrometheusMetrics Class Tests**: Comprehensive metrics initialization, recording, and custom metrics functionality
+- **GPU Monitoring Tests**: NVIDIA-ML-PY integration with mock GPU responses and real-time metrics collection
+- **Background Monitoring Tests**: Thread management, task scheduling, and automatic cleanup validation
+- **System Metrics Tests**: CPU, memory, disk usage monitoring with psutil integration and error handling
+- **Integration Tests**: End-to-end metrics collection workflows with comprehensive lifecycle testing
+- **Performance Tests**: Metrics collection overhead, background monitoring efficiency, and memory usage
 
 ### Data Management Tests (23 Tests)
 
@@ -1344,8 +1402,14 @@ pytest tests/test_mlflow_config.py -v
 # Run FastAPI foundation tests
 pytest tests/test_api_foundation.py -v
 
+# Run Prometheus metrics tests
+pytest tests/test_prometheus_metrics.py -v
+
 # Run database tests
 pytest tests/test_database.py -v
+
+# Run Prometheus metrics tests
+pytest tests/test_prometheus_metrics.py -v
 
 # Run prediction endpoint tests
 pytest tests/test_prediction_endpoints.py -v
@@ -1372,6 +1436,7 @@ pytest --cov=src tests/
 
 **Test Coverage:**
 
+- ✅ **Prometheus Metrics Implementation**: Complete metrics collection testing with GPU monitoring, background tasks, and system health
 - ✅ **Database Integration and Logging**: Complete database functionality testing with migrations, logging, and maintenance
 - ✅ **Prediction API Endpoints**: Complete prediction service testing with single/batch predictions, model info, database logging
 - ✅ **Pydantic Validation Models**: Comprehensive validation testing with business logic and edge cases
@@ -1531,7 +1596,63 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 2.9 - Database Integration and Logging (Latest)
+### Version 3.0 - Prometheus Metrics Implementation (Latest)
+
+**🚀 Major New Features:**
+
+- **Comprehensive Prometheus Metrics**: Complete metrics collection for API performance, model predictions, GPU utilization, system health, and custom business metrics
+- **GPU Monitoring with nvidia-ml-py**: Real-time GPU metrics collection including utilization, memory usage, temperature, and power consumption
+- **Background Task Scheduling**: Automated metrics collection with configurable intervals and task scheduling system
+- **Custom Model Performance Metrics**: Model accuracy, RMSE, MAE, R² scores, prediction latency percentiles, and model drift detection
+- **System Health Monitoring**: CPU usage, memory usage, disk usage, API health status, and active connections tracking
+- **Metrics Exposition Endpoint**: Prometheus-compatible metrics server and FastAPI endpoint integration
+
+**🔧 Technical Improvements:**
+
+- **PrometheusMetrics Class**: Production-ready metrics collector with 25+ comprehensive metrics covering all platform aspects
+- **GPU Monitoring Utilities**: Real-time GPU metrics collection with multi-GPU support and graceful fallback
+- **Background Monitoring System**: Thread-safe background monitoring with configurable intervals and proper cleanup
+- **Task Scheduling Framework**: Automated task scheduling with error handling and comprehensive logging
+- **Custom Metrics Framework**: Extensible metrics system for model performance, system health, and business intelligence
+- **FastAPI Integration**: Seamless integration with existing FastAPI middleware and request tracking
+
+**📊 Metrics Features:**
+
+- **API Request Metrics**: Request count, duration, status codes by method and endpoint
+- **Prediction Metrics**: Prediction count, duration, value distribution by model version and type
+- **GPU Metrics**: Utilization, memory usage, temperature, power consumption by GPU ID and name
+- **Model Performance Metrics**: Accuracy, RMSE, MAE, R² scores by model version and dataset
+- **System Health Metrics**: CPU, memory, disk usage, API health status, active connections
+- **Error Metrics**: Error count by error type and endpoint with comprehensive tracking
+- **Database Metrics**: Database operations count and duration by operation and table
+- **Business Metrics**: Daily predictions, model drift scores, prediction latency percentiles
+
+**🧪 Testing & Validation:**
+
+- **25 Comprehensive Prometheus Tests**: Complete testing of all metrics functionality with mock integrations
+- **GPU Monitoring Tests**: NVIDIA-ML-PY integration testing with mock GPU responses
+- **Background Monitoring Tests**: Thread management, task scheduling, and cleanup validation
+- **System Metrics Tests**: CPU, memory, disk usage monitoring with psutil integration
+- **Integration Testing**: End-to-end metrics collection workflows with real components
+- **Performance Testing**: Metrics collection overhead and background monitoring efficiency
+
+**📁 New Files Added:**
+
+- `src/api/metrics.py` - Enhanced with comprehensive Prometheus metrics implementation (1000+ lines)
+- `examples/prometheus_metrics_demo.py` - Interactive Prometheus metrics demonstration (400+ lines)
+- `tests/test_prometheus_metrics.py` - Comprehensive Prometheus metrics testing suite (25 tests, 800+ lines)
+- `PROMETHEUS_METRICS_SUMMARY.md` - Complete implementation documentation and usage guide
+- `requirements.txt` - Updated with schedule>=1.2.0 dependency
+
+**🌐 Prometheus Integration:**
+
+- **Metrics Server**: Dedicated Prometheus metrics server on port 8001 with automatic startup
+- **FastAPI Endpoint**: `/metrics` endpoint for Prometheus scraping with proper content type
+- **Background Monitoring**: Automatic GPU and system metrics collection every 5 seconds
+- **Task Scheduling**: Configurable task scheduling for custom metrics collection
+- **Grafana Compatibility**: Metrics designed for seamless Grafana dashboard integration
+
+### Version 2.9 - Database Integration and Logging
 
 **🚀 Major New Features:**
 
@@ -2030,6 +2151,7 @@ python -c "import sys; print(sys.path)"
 
 ## 📚 Related Documentation
 
+- **[Prometheus Metrics Implementation](PROMETHEUS_METRICS_SUMMARY.md)** - Complete metrics collection with GPU monitoring and background tasks
 - **[Database Integration and Logging](DATABASE_INTEGRATION_SUMMARY.md)** - Complete database system with logging and migrations
 - **[Prediction API Endpoints](PREDICTION_API_ENDPOINTS_SUMMARY.md)** - Complete prediction service with single/batch processing
 - **[FastAPI Service Foundation](FASTAPI_SERVICE_SUMMARY.md)** - Complete FastAPI service implementation

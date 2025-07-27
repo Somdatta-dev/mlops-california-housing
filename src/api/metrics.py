@@ -8,9 +8,12 @@ including prediction metrics, system metrics, and GPU monitoring.
 import time
 import logging
 import threading
-from typing import Dict, Any, Optional, List
+import asyncio
+import schedule
+from typing import Dict, Any, Optional, List, Callable
 from contextlib import contextmanager
 from functools import wraps
+from datetime import datetime, timedelta
 
 from prometheus_client import (
     Counter, Histogram, Gauge, Info, Enum,
@@ -48,12 +51,18 @@ class PrometheusMetrics:
         self._gpu_handles = []
         self._monitoring_thread = None
         self._stop_monitoring = threading.Event()
+        self._scheduled_tasks = []
+        self._task_scheduler_thread = None
+        self._last_metrics_update = datetime.now()
         
         # Initialize GPU monitoring
         self._init_gpu_monitoring()
         
         # Initialize metrics
         self._init_metrics()
+        
+        # Initialize custom metrics for model performance and system health
+        self._init_custom_metrics()
         
         logger.info("Prometheus metrics initialized")
     
@@ -147,42 +156,41 @@ class PrometheusMetrics:
             registry=self.registry
         )
         
-        # GPU Metrics (if available)
-        if self._gpu_available:
-            self.gpu_utilization = Gauge(
-                'gpu_utilization_percent',
-                'GPU utilization percentage',
-                ['gpu_id', 'gpu_name'],
-                registry=self.registry
-            )
-            
-            self.gpu_memory_used = Gauge(
-                'gpu_memory_used_bytes',
-                'GPU memory usage in bytes',
-                ['gpu_id', 'gpu_name'],
-                registry=self.registry
-            )
-            
-            self.gpu_memory_total = Gauge(
-                'gpu_memory_total_bytes',
-                'Total GPU memory in bytes',
-                ['gpu_id', 'gpu_name'],
-                registry=self.registry
-            )
-            
-            self.gpu_temperature = Gauge(
-                'gpu_temperature_celsius',
-                'GPU temperature in Celsius',
-                ['gpu_id', 'gpu_name'],
-                registry=self.registry
-            )
-            
-            self.gpu_power_usage = Gauge(
-                'gpu_power_usage_watts',
-                'GPU power usage in watts',
-                ['gpu_id', 'gpu_name'],
-                registry=self.registry
-            )
+        # GPU Metrics (always initialize, but only update if available)
+        self.gpu_utilization = Gauge(
+            'gpu_utilization_percent',
+            'GPU utilization percentage',
+            ['gpu_id', 'gpu_name'],
+            registry=self.registry
+        )
+        
+        self.gpu_memory_used = Gauge(
+            'gpu_memory_used_bytes',
+            'GPU memory usage in bytes',
+            ['gpu_id', 'gpu_name'],
+            registry=self.registry
+        )
+        
+        self.gpu_memory_total = Gauge(
+            'gpu_memory_total_bytes',
+            'Total GPU memory in bytes',
+            ['gpu_id', 'gpu_name'],
+            registry=self.registry
+        )
+        
+        self.gpu_temperature = Gauge(
+            'gpu_temperature_celsius',
+            'GPU temperature in Celsius',
+            ['gpu_id', 'gpu_name'],
+            registry=self.registry
+        )
+        
+        self.gpu_power_usage = Gauge(
+            'gpu_power_usage_watts',
+            'GPU power usage in watts',
+            ['gpu_id', 'gpu_name'],
+            registry=self.registry
+        )
         
         # Error Metrics
         self.errors_total = Counter(
@@ -204,6 +212,116 @@ class PrometheusMetrics:
             'database_operation_duration_seconds',
             'Database operation duration',
             ['operation', 'table'],
+            registry=self.registry
+        )
+    
+    def _init_custom_metrics(self) -> None:
+        """Initialize custom metrics for model performance and system health."""
+        
+        # Model Performance Metrics
+        self.model_accuracy = Gauge(
+            'model_accuracy_score',
+            'Current model accuracy score',
+            ['model_version', 'dataset'],
+            registry=self.registry
+        )
+        
+        self.model_rmse = Gauge(
+            'model_rmse_score',
+            'Current model RMSE score',
+            ['model_version', 'dataset'],
+            registry=self.registry
+        )
+        
+        self.model_mae = Gauge(
+            'model_mae_score',
+            'Current model MAE score',
+            ['model_version', 'dataset'],
+            registry=self.registry
+        )
+        
+        self.model_r2 = Gauge(
+            'model_r2_score',
+            'Current model R² score',
+            ['model_version', 'dataset'],
+            registry=self.registry
+        )
+        
+        # System Health Metrics
+        self.system_cpu_usage = Gauge(
+            'system_cpu_usage_percent',
+            'System CPU usage percentage',
+            registry=self.registry
+        )
+        
+        self.system_memory_usage = Gauge(
+            'system_memory_usage_bytes',
+            'System memory usage in bytes',
+            registry=self.registry
+        )
+        
+        self.system_memory_total = Gauge(
+            'system_memory_total_bytes',
+            'Total system memory in bytes',
+            registry=self.registry
+        )
+        
+        self.system_disk_usage = Gauge(
+            'system_disk_usage_bytes',
+            'System disk usage in bytes',
+            ['mount_point'],
+            registry=self.registry
+        )
+        
+        # API Health Metrics
+        self.api_health_status = Gauge(
+            'api_health_status',
+            'API health status (1=healthy, 0=unhealthy)',
+            ['component'],
+            registry=self.registry
+        )
+        
+        self.active_connections = Gauge(
+            'active_connections_count',
+            'Number of active connections',
+            registry=self.registry
+        )
+        
+        # Model Performance Over Time
+        self.prediction_latency_p95 = Gauge(
+            'prediction_latency_p95_seconds',
+            '95th percentile prediction latency',
+            ['model_version'],
+            registry=self.registry
+        )
+        
+        self.prediction_latency_p99 = Gauge(
+            'prediction_latency_p99_seconds',
+            '99th percentile prediction latency',
+            ['model_version'],
+            registry=self.registry
+        )
+        
+        # Hardware Metrics (beyond GPU)
+        self.hardware_temperature = Gauge(
+            'hardware_temperature_celsius',
+            'Hardware component temperature',
+            ['component'],
+            registry=self.registry
+        )
+        
+        # Custom business metrics
+        self.daily_predictions = Counter(
+            'daily_predictions_total',
+            'Total predictions made today',
+            ['model_version'],
+            registry=self.registry
+        )
+        
+        self.model_drift_score = Gauge(
+            'model_drift_score',
+            'Model drift detection score',
+            ['model_version', 'feature'],
             registry=self.registry
         )
     
@@ -448,34 +566,216 @@ class PrometheusMetrics:
         except Exception as e:
             logger.error(f"Failed to update GPU metrics: {e}")
     
+    def update_system_metrics(self) -> None:
+        """Update system health metrics."""
+        try:
+            import psutil
+            
+            # CPU usage
+            cpu_percent = psutil.cpu_percent(interval=1)
+            self.system_cpu_usage.set(cpu_percent)
+            
+            # Memory usage
+            memory = psutil.virtual_memory()
+            self.system_memory_usage.set(memory.used)
+            self.system_memory_total.set(memory.total)
+            
+            # Disk usage for root partition
+            disk = psutil.disk_usage('/')
+            self.system_disk_usage.labels(mount_point='/').set(disk.used)
+            
+            # Update last metrics update time
+            self._last_metrics_update = datetime.now()
+            
+        except ImportError:
+            logger.warning("psutil not available, system metrics disabled")
+        except Exception as e:
+            logger.error(f"Failed to update system metrics: {e}")
+    
+    def update_model_performance_metrics(self, model_version: str, dataset: str,
+                                       accuracy: Optional[float] = None,
+                                       rmse: Optional[float] = None,
+                                       mae: Optional[float] = None,
+                                       r2: Optional[float] = None) -> None:
+        """
+        Update model performance metrics.
+        
+        Args:
+            model_version: Version of the model
+            dataset: Dataset used for evaluation
+            accuracy: Accuracy score
+            rmse: RMSE score
+            mae: MAE score
+            r2: R² score
+        """
+        if accuracy is not None:
+            self.model_accuracy.labels(
+                model_version=model_version,
+                dataset=dataset
+            ).set(accuracy)
+        
+        if rmse is not None:
+            self.model_rmse.labels(
+                model_version=model_version,
+                dataset=dataset
+            ).set(rmse)
+        
+        if mae is not None:
+            self.model_mae.labels(
+                model_version=model_version,
+                dataset=dataset
+            ).set(mae)
+        
+        if r2 is not None:
+            self.model_r2.labels(
+                model_version=model_version,
+                dataset=dataset
+            ).set(r2)
+    
+    def update_api_health_status(self, component: str, is_healthy: bool) -> None:
+        """
+        Update API health status for a component.
+        
+        Args:
+            component: Component name (e.g., 'database', 'model', 'gpu')
+            is_healthy: Whether the component is healthy
+        """
+        self.api_health_status.labels(component=component).set(1 if is_healthy else 0)
+    
+    def update_prediction_latency_percentiles(self, model_version: str,
+                                            p95_latency: float,
+                                            p99_latency: float) -> None:
+        """
+        Update prediction latency percentiles.
+        
+        Args:
+            model_version: Version of the model
+            p95_latency: 95th percentile latency in seconds
+            p99_latency: 99th percentile latency in seconds
+        """
+        self.prediction_latency_p95.labels(model_version=model_version).set(p95_latency)
+        self.prediction_latency_p99.labels(model_version=model_version).set(p99_latency)
+    
+    def update_model_drift_score(self, model_version: str, feature: str, drift_score: float) -> None:
+        """
+        Update model drift detection score.
+        
+        Args:
+            model_version: Version of the model
+            feature: Feature name
+            drift_score: Drift score (0-1, where 1 indicates high drift)
+        """
+        self.model_drift_score.labels(
+            model_version=model_version,
+            feature=feature
+        ).set(drift_score)
+    
+    def record_daily_prediction(self, model_version: str) -> None:
+        """
+        Record a daily prediction count.
+        
+        Args:
+            model_version: Version of the model used
+        """
+        self.daily_predictions.labels(model_version=model_version).inc()
+    
+    def update_active_connections(self, count: int) -> None:
+        """
+        Update active connections count.
+        
+        Args:
+            count: Number of active connections
+        """
+        self.active_connections.set(count)
+    
+    def schedule_task(self, func: Callable, interval_seconds: int, task_name: str) -> None:
+        """
+        Schedule a recurring task for metrics collection.
+        
+        Args:
+            func: Function to execute
+            interval_seconds: Interval in seconds
+            task_name: Name of the task for logging
+        """
+        def task_wrapper():
+            try:
+                logger.debug(f"Executing scheduled task: {task_name}")
+                func()
+            except Exception as e:
+                logger.error(f"Error in scheduled task {task_name}: {e}")
+        
+        # Schedule the task
+        schedule.every(interval_seconds).seconds.do(task_wrapper)
+        self._scheduled_tasks.append((task_name, interval_seconds))
+        logger.info(f"Scheduled task '{task_name}' to run every {interval_seconds} seconds")
+    
     def start_background_monitoring(self, interval: float = 5.0) -> None:
         """
-        Start background monitoring thread for GPU metrics.
+        Start background monitoring thread for GPU and system metrics.
         
         Args:
             interval: Monitoring interval in seconds
         """
-        if not self._gpu_available or self._monitoring_thread is not None:
+        if self._monitoring_thread is not None:
+            logger.warning("Background monitoring already started")
             return
         
         def monitor():
             while not self._stop_monitoring.wait(interval):
                 try:
-                    self.update_gpu_metrics()
+                    # Update GPU metrics if available
+                    if self._gpu_available:
+                        self.update_gpu_metrics()
+                    
+                    # Update system metrics
+                    self.update_system_metrics()
+                    
                 except Exception as e:
                     logger.error(f"Error in background monitoring: {e}")
         
         self._monitoring_thread = threading.Thread(target=monitor, daemon=True)
         self._monitoring_thread.start()
-        logger.info(f"Started background GPU monitoring with {interval}s interval")
+        logger.info(f"Started background monitoring with {interval}s interval")
+        
+        # Start task scheduler if we have scheduled tasks
+        if self._scheduled_tasks:
+            self._start_task_scheduler()
+    
+    def _start_task_scheduler(self) -> None:
+        """Start the task scheduler thread."""
+        if self._task_scheduler_thread is not None:
+            return
+        
+        def scheduler():
+            while not self._stop_monitoring.is_set():
+                try:
+                    schedule.run_pending()
+                    time.sleep(1)
+                except Exception as e:
+                    logger.error(f"Error in task scheduler: {e}")
+        
+        self._task_scheduler_thread = threading.Thread(target=scheduler, daemon=True)
+        self._task_scheduler_thread.start()
+        logger.info("Started task scheduler thread")
     
     def stop_background_monitoring(self) -> None:
-        """Stop background monitoring thread."""
-        if self._monitoring_thread is not None:
+        """Stop background monitoring and task scheduler threads."""
+        if self._monitoring_thread is not None or self._task_scheduler_thread is not None:
             self._stop_monitoring.set()
-            self._monitoring_thread.join(timeout=10)
-            self._monitoring_thread = None
-            logger.info("Stopped background GPU monitoring")
+            
+            if self._monitoring_thread is not None:
+                self._monitoring_thread.join(timeout=10)
+                self._monitoring_thread = None
+            
+            if self._task_scheduler_thread is not None:
+                self._task_scheduler_thread.join(timeout=10)
+                self._task_scheduler_thread = None
+            
+            # Clear scheduled tasks
+            schedule.clear()
+            self._scheduled_tasks.clear()
+            
+            logger.info("Stopped background monitoring and task scheduler")
     
     @contextmanager
     def time_operation(self, operation_name: str, labels: Optional[Dict[str, str]] = None):
@@ -504,7 +804,8 @@ class PrometheusMetrics:
         """
         from prometheus_client import REGISTRY
         registry = self.registry or REGISTRY
-        return generate_latest(registry)
+        metrics_bytes = generate_latest(registry)
+        return metrics_bytes.decode('utf-8')
 
 
 # Decorator for automatic request timing
