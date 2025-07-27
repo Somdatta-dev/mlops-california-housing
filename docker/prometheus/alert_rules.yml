@@ -1,0 +1,144 @@
+# Prometheus alert rules for MLOps California Housing Platform
+# Defines alerts for system health, performance, and GPU monitoring
+
+groups:
+  - name: mlops_api_alerts
+    rules:
+      # API Health Alerts
+      - alert: APIDown
+        expr: up{job="mlops-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MLOps API is down"
+          description: "The MLOps California Housing API has been down for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }} errors per second over the last 5 minutes."
+
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time"
+          description: "95th percentile response time is {{ $value }} seconds."
+
+      - alert: HighRequestRate
+        expr: rate(http_requests_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "High request rate"
+          description: "Request rate is {{ $value }} requests per second."
+
+  - name: gpu_alerts
+    rules:
+      # GPU Monitoring Alerts
+      - alert: GPUHighUtilization
+        expr: nvidia_gpu_utilization_percent > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU utilization is high"
+          description: "GPU utilization is {{ $value }}% for more than 5 minutes."
+
+      - alert: GPUHighMemoryUsage
+        expr: (nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes) * 100 > 85
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU memory usage is high"
+          description: "GPU memory usage is {{ $value }}% for more than 3 minutes."
+
+      - alert: GPUHighTemperature
+        expr: nvidia_gpu_temperature_celsius > 80
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU temperature is high"
+          description: "GPU temperature is {{ $value }}°C for more than 2 minutes."
+
+      - alert: GPUUnavailable
+        expr: up{job="nvidia-gpu"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU monitoring is unavailable"
+          description: "GPU metrics are not being collected."
+
+  - name: model_performance_alerts
+    rules:
+      # Model Performance Alerts
+      - alert: ModelPredictionLatencyHigh
+        expr: histogram_quantile(0.95, rate(prediction_duration_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model prediction latency is high"
+          description: "95th percentile prediction latency is {{ $value }} seconds."
+
+      - alert: ModelLoadFailure
+        expr: increase(model_load_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model loading failures detected"
+          description: "{{ $value }} model loading failures in the last 5 minutes."
+
+  - name: system_alerts
+    rules:
+      # System Resource Alerts
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}% for more than 5 minutes."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}% for more than 5 minutes."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is {{ $value }}% available."
+
+  - name: mlflow_alerts
+    rules:
+      # MLflow Server Alerts
+      - alert: MLflowDown
+        expr: up{job="mlflow"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MLflow server is down"
+          description: "MLflow tracking server has been down for more than 2 minutes."

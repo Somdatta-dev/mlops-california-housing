@@ -1,7 +1,5 @@
-# Core ML and GPU Libraries
-torch>=2.0.0
-torchvision>=0.15.0
-torchaudio>=2.0.0
+# Core ML and GPU Libraries (PyTorch installed separately in Dockerfile)
+# torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 (installed with CUDA 12.8)
 xgboost>=2.0.0
 lightgbm>=4.0.0
 

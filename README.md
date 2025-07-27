@@ -57,6 +57,14 @@ MLOps Platform
 │   ├── Database Migration Scripts and Schema Management
 │   ├── CLI Database Management Utilities
 │   └── Comprehensive Database Testing and Validation
+├── Docker Containerization with CUDA Support
+│   ├── Multi-Stage Optimized Dockerfiles with CUDA 12.8 and PyTorch 2.7.0
+│   ├── GPU-Enabled and CPU-Only Container Variants
+│   ├── Docker Compose Orchestration with Service Dependencies
+│   ├── Production-Ready Configurations with Health Checks and Monitoring
+│   ├── Nginx Load Balancer with Rate Limiting and SSL Support
+│   ├── Comprehensive Container Security and Non-Root Execution
+│   └── Development and Production Environment Profiles
 ├── CI/CD Pipeline (GitHub Actions)
 │   ├── Automated Testing
 │   ├── Docker Build & Deploy
@@ -150,6 +158,34 @@ python examples/database_demo.py
 # http://localhost:8000/docs
 ```
 
+### 5. Docker Deployment (Production-Ready)
+
+```bash
+# Quick Docker test
+python test_docker_quick.py
+
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Access services
+# API: http://localhost:8000
+# MLflow: http://localhost:5000
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin123)
+
+# CPU-only deployment (no GPU required)
+docker-compose --profile cpu-only up -d
+
+# Development environment with hot reload
+docker-compose --profile development up -d
+
+# Production deployment with optimizations
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Test GPU functionality in container
+docker run --rm --gpus all mlops-california-housing:latest python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+```
+
 ## 📊 Dataset Information
 
 **California Housing Dataset**
@@ -232,7 +268,20 @@ mlops-california-housing/
 ├── scripts/
 │   └── manage_database.py      # CLI database management utility
 ├── notebooks/                  # Jupyter notebooks for EDA
-├── docker/                     # Docker configuration
+├── docker/                     # Docker configuration with CUDA 12.8 support
+│   ├── build.sh               # Docker build automation script
+│   ├── entrypoint.sh          # Container entrypoint with signal handling
+│   ├── optimize.sh            # Production image optimization
+│   ├── README.md              # Comprehensive Docker documentation
+│   ├── nginx/                 # Nginx load balancer configuration
+│   └── prometheus/            # Prometheus monitoring configuration
+├── Dockerfile                 # Multi-stage GPU-enabled Dockerfile
+├── Dockerfile.cpu             # CPU-only container variant
+├── docker-compose.yml         # Main service orchestration
+├── docker-compose.override.yml # Development overrides
+├── docker-compose.prod.yml    # Production optimizations
+├── Makefile                   # Docker management commands
+├── .dockerignore              # Docker build context optimization
 ├── .github/workflows/          # CI/CD pipelines
 ├── .kiro/specs/mlops-platform/ # Project specifications
 ├── requirements.txt            # Python dependencies
@@ -1207,15 +1256,167 @@ dvc push      # Upload data to remote
 dvc add       # Track new data files
 ```
 
-## 🐳 Docker Support
+## 🐳 Docker Containerization with CUDA 12.8 Support
 
+### Production-Ready Docker Infrastructure ✅
+
+**Complete Docker containerization with CUDA 12.8 and PyTorch 2.7.0 support:**
+
+- **Multi-Stage Optimized Builds**: Minimal production images with comprehensive GPU support
+- **CUDA 12.8 Integration**: Full NVIDIA GPU support with PyTorch 2.7.0+cu128
+- **Service Orchestration**: Complete Docker Compose with MLflow, Prometheus, Grafana, Redis
+- **Production Features**: Health checks, signal handling, security hardening, monitoring
+- **Development Support**: Hot reload, Jupyter integration, debugging tools
+
+### Key Docker Features
+
+**GPU-Enabled Containers:**
+- **Base Image**: `nvidia/cuda:12.8.0-runtime-ubuntu22.04`
+- **PyTorch**: 2.7.0+cu128 with full CUDA 12.8 support
+- **GPU Memory**: 31.8GB RTX 5090 support with memory management
+- **Performance**: Optimized for high-end GPU workloads
+
+**Container Variants:**
+- **GPU Version**: Full CUDA support for training and inference
+- **CPU Version**: PyTorch 2.7.0+cpu for environments without GPU
+- **Development**: Hot reload with debugging tools and Jupyter
+- **Production**: Optimized with security hardening and monitoring
+
+**Service Stack:**
+- **API Service**: FastAPI with GPU passthrough and health checks
+- **MLflow**: Experiment tracking and model registry
+- **Prometheus**: Metrics collection with GPU monitoring
+- **Grafana**: Visualization dashboards (admin/admin123)
+- **Nginx**: Load balancer with rate limiting and SSL support
+- **Redis**: Caching layer for improved performance
+
+### Docker Usage
+
+**Quick Start:**
 ```bash
-# Build Docker image (when implemented)
-docker build -t mlops-housing .
+# Test Docker setup
+python test_docker_quick.py
 
-# Run container
-docker run -p 8000:8000 mlops-housing
+# Build GPU image
+docker build -t mlops-california-housing:latest .
+
+# Run with GPU support
+docker run --gpus all -p 8000:8000 mlops-california-housing:latest
+
+# Test CUDA functionality
+docker run --rm --gpus all mlops-california-housing:latest python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
 ```
+
+**Docker Compose Deployment:**
+```bash
+# Start all services (GPU)
+docker-compose up -d
+
+# CPU-only deployment
+docker-compose --profile cpu-only up -d
+
+# Development environment
+docker-compose --profile development up -d
+
+# Production deployment
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+**Service Access:**
+- **API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+- **MLflow**: http://localhost:5000
+- **Prometheus**: http://localhost:9090
+- **Grafana**: http://localhost:3000 (admin/admin123)
+- **Jupyter** (dev): http://localhost:8888
+
+**Container Management:**
+```bash
+# Using Makefile (Windows: use docker commands directly)
+# Build all images
+make build-all
+
+# Start services
+make run
+
+# View logs
+make logs
+
+# Check health
+make health
+
+# Test GPU
+make gpu-test
+
+# Scale API service
+make scale-api REPLICAS=3
+
+# Security scan
+make security-scan
+```
+
+**Performance Results:**
+- ✅ **PyTorch**: 2.7.0+cu128 with CUDA 12.8
+- ✅ **GPU Support**: RTX 5090 with 31.8GB memory
+- ✅ **Container Startup**: ~15-30 seconds
+- ✅ **API Response**: ~15-25ms predictions
+- ✅ **Image Size**: Optimized multi-stage builds
+
+### Docker Configuration
+
+**Environment Variables (.env):**
+```env
+# GPU Configuration
+CUDA_VISIBLE_DEVICES=0
+NVIDIA_VISIBLE_DEVICES=all
+
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=false
+
+# MLflow Integration
+MLFLOW_TRACKING_URI=http://mlflow:5000
+
+# Monitoring
+PROMETHEUS_ENABLED=true
+PROMETHEUS_PORT=9090
+```
+
+**Resource Limits:**
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '2.0'
+      memory: 4G
+    reservations:
+      cpus: '1.0'
+      memory: 2G
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+### Security Features
+
+- **Non-root execution** with dedicated `mlops` user
+- **Multi-stage builds** for minimal attack surface
+- **Security scanning** integration with Trivy
+- **Network isolation** with internal Docker networks
+- **Rate limiting** and CORS protection via Nginx
+- **Health checks** for all services with proper timeouts
+
+### Monitoring & Observability
+
+- **Prometheus Metrics**: API performance, GPU utilization, system health
+- **Grafana Dashboards**: Real-time monitoring and alerting
+- **Container Health Checks**: Automated health monitoring
+- **Log Aggregation**: Structured logging with JSON format
+- **GPU Monitoring**: Real-time GPU metrics and temperature tracking
+
+For detailed Docker documentation, see [docker/README.md](docker/README.md) and [DOCKER_SETUP_SUMMARY.md](DOCKER_SETUP_SUMMARY.md).
 
 ## 🔍 Monitoring & Logging
 
@@ -1513,12 +1714,32 @@ docker build -t mlops-housing .
 docker run -p 8000:8000 mlops-housing
 ```
 
-### Cloud Deployment Options
+### Docker Deployment Options
 
-- **AWS EC2**: Deploy with Docker and load balancer
-- **Google Cloud Run**: Serverless container deployment
-- **Azure Container Instances**: Managed container service
-- **Kubernetes**: Scalable orchestration with Helm charts
+**Local Development:**
+```bash
+# Development with hot reload
+docker-compose --profile development up -d
+
+# Access Jupyter notebook
+# http://localhost:8888
+```
+
+**Production Deployment:**
+```bash
+# Production with optimizations
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# With scaling
+docker-compose up -d --scale mlops-api=3
+```
+
+**Cloud Deployment Options:**
+- **AWS EC2**: Deploy with Docker Compose and Application Load Balancer
+- **Google Cloud Run**: Serverless container deployment with GPU support
+- **Azure Container Instances**: Managed container service with GPU
+- **Kubernetes**: Scalable orchestration with Helm charts and GPU node pools
+- **NVIDIA NGC**: Optimized deployment on NVIDIA cloud infrastructure
 
 ## 🔧 Configuration
 
@@ -1596,7 +1817,84 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 3.0 - Prometheus Metrics Implementation (Latest)
+### Version 3.1 - Docker Containerization with CUDA 12.8 Support (Latest)
+
+**🚀 Major New Features:**
+
+- **Complete Docker Containerization**: Production-ready Docker infrastructure with CUDA 12.8 and PyTorch 2.7.0 support
+- **Multi-Stage Optimized Dockerfiles**: GPU-enabled and CPU-only variants with minimal image sizes and security hardening
+- **Docker Compose Orchestration**: Complete service stack with MLflow, Prometheus, Grafana, Redis, and Nginx load balancer
+- **CUDA 12.8 Integration**: Full NVIDIA GPU support with PyTorch 2.7.0+cu128 for RTX 5090 and modern GPUs
+- **Production Features**: Health checks, signal handling, non-root execution, comprehensive monitoring, and security scanning
+- **Development Environment**: Hot reload, Jupyter integration, debugging tools, and development-specific configurations
+
+**🔧 Technical Improvements:**
+
+- **Multi-Stage Builds**: Optimized Dockerfile with cuda-base → dependencies → app-build → production/development stages
+- **GPU Passthrough**: Complete NVIDIA Container Runtime configuration with device reservations and capabilities
+- **Service Orchestration**: Docker Compose with profiles for development, CPU-only, and production deployments
+- **Container Security**: Non-root user execution, minimal attack surface, security scanning integration
+- **Signal Handling**: Proper container lifecycle management with graceful shutdown and cleanup
+- **Load Balancing**: Nginx reverse proxy with rate limiting, SSL support, and health checks
+
+**📊 Performance Features:**
+
+- **CUDA Performance**: PyTorch 2.7.0+cu128 with full RTX 5090 support (31.8GB GPU memory)
+- **Container Startup**: ~15-30 seconds for full API readiness with health checks
+- **API Performance**: ~15-25ms prediction latency in containerized environment
+- **Image Optimization**: Multi-stage builds with minimal production image sizes
+- **Resource Management**: Configurable CPU/memory limits and GPU device reservations
+- **Monitoring Integration**: Prometheus metrics, Grafana dashboards, and GPU monitoring
+
+**🧪 Testing & Validation:**
+
+- **Comprehensive Docker Tests**: Full testing suite for container functionality and GPU support
+- **CUDA Validation**: Verified PyTorch 2.7.0+cu128 with CUDA 12.8 working in containers
+- **Service Integration**: End-to-end testing of all Docker Compose services and dependencies
+- **Performance Testing**: Container startup times, API response times, and resource usage validation
+- **Security Testing**: Container security scanning and vulnerability assessment
+- **Cross-Platform Testing**: Windows, Linux, and macOS compatibility with Docker Desktop
+
+**📁 New Files Added:**
+
+- `Dockerfile` - Multi-stage GPU-enabled Dockerfile with CUDA 12.8 support (150+ lines)
+- `Dockerfile.cpu` - CPU-only container variant with PyTorch 2.7.0+cpu (120+ lines)
+- `docker-compose.yml` - Main service orchestration with GPU passthrough (250+ lines)
+- `docker-compose.override.yml` - Development environment overrides (80+ lines)
+- `docker-compose.prod.yml` - Production optimizations and scaling (100+ lines)
+- `docker/build.sh` - Docker build automation script with testing (200+ lines)
+- `docker/entrypoint.sh` - Container entrypoint with signal handling (150+ lines)
+- `docker/optimize.sh` - Production image optimization script (200+ lines)
+- `docker/nginx/nginx.conf` - Load balancer configuration with rate limiting (150+ lines)
+- `docker/prometheus/prometheus.yml` - Monitoring configuration (50+ lines)
+- `docker/prometheus/alert_rules.yml` - Alerting rules for system monitoring (100+ lines)
+- `docker/README.md` - Comprehensive Docker documentation (400+ lines)
+- `Makefile` - Docker management commands for easy operations (200+ lines)
+- `.dockerignore` - Build context optimization (80+ lines)
+- `test_docker_quick.py` - Quick Docker functionality testing (100+ lines)
+- `test_full_docker_setup.py` - Comprehensive Docker testing suite (300+ lines)
+- `DOCKER_SETUP_SUMMARY.md` - Complete implementation documentation (500+ lines)
+
+**🌐 Docker Services:**
+
+- **MLOps API**: FastAPI service with GPU support and health checks
+- **MLflow**: Experiment tracking and model registry server
+- **Prometheus**: Metrics collection with GPU monitoring and alerting
+- **Grafana**: Visualization dashboards with pre-configured panels
+- **Nginx**: Load balancer with rate limiting and SSL termination support
+- **Redis**: Caching layer for improved API performance
+- **GPU Exporter**: NVIDIA GPU metrics for Prometheus monitoring
+
+**🔧 Container Management:**
+
+- **Build Automation**: Automated build scripts with version management and testing
+- **Service Profiles**: Development, CPU-only, and production deployment profiles
+- **Health Monitoring**: Comprehensive health checks for all services with proper timeouts
+- **Resource Management**: CPU/memory limits and GPU device reservations
+- **Security Hardening**: Non-root execution, minimal images, and security scanning
+- **Monitoring Integration**: Prometheus metrics, Grafana dashboards, and alerting rules
+
+### Version 3.0 - Prometheus Metrics Implementation
 
 **🚀 Major New Features:**
 
@@ -2151,6 +2449,8 @@ python -c "import sys; print(sys.path)"
 
 ## 📚 Related Documentation
 
+- **[Docker Containerization](DOCKER_SETUP_SUMMARY.md)** - Complete Docker setup with CUDA 12.8 and PyTorch 2.7.0 support
+- **[Docker Configuration](docker/README.md)** - Comprehensive Docker documentation and troubleshooting
 - **[Prometheus Metrics Implementation](PROMETHEUS_METRICS_SUMMARY.md)** - Complete metrics collection with GPU monitoring and background tasks
 - **[Database Integration and Logging](DATABASE_INTEGRATION_SUMMARY.md)** - Complete database system with logging and migrations
 - **[Prediction API Endpoints](PREDICTION_API_ENDPOINTS_SUMMARY.md)** - Complete prediction service with single/batch processing

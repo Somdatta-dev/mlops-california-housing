@@ -1,0 +1,162 @@
+# CPU-only Dockerfile for MLOps California Housing Prediction API
+# For environments without GPU support
+
+# ============================================================================
+# Stage 1: Base Python environment
+# ============================================================================
+FROM python:3.10-slim-bullseye AS python-base
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    wget \
+    git \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Upgrade pip
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# ============================================================================
+# Stage 2: Dependencies installation
+# ============================================================================
+FROM python-base AS dependencies
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements file
+COPY requirements.txt .
+
+# Install Python dependencies (CPU versions)
+RUN pip install --no-cache-dir \
+    torch==2.7.0+cpu \
+    torchvision==0.22.0+cpu \
+    torchaudio==2.7.0+cpu \
+    --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+    xgboost>=2.0.0 \
+    lightgbm>=4.0.0 \
+    mlflow>=2.8.0 \
+    dvc>=3.30.0 \
+    "dvc[gdrive]>=3.30.0" \
+    fastapi>=0.104.0 \
+    "uvicorn[standard]>=0.24.0" \
+    pydantic>=2.5.0 \
+    pandas>=2.1.0 \
+    numpy>=1.24.0 \
+    scikit-learn>=1.3.0 \
+    matplotlib>=3.7.0 \
+    seaborn>=0.12.0 \
+    prometheus-client>=0.19.0 \
+    schedule>=1.2.0 \
+    psutil>=5.9.0 \
+    sqlalchemy>=2.0.0 \
+    pytest>=7.4.0 \
+    pytest-asyncio>=0.21.0 \
+    pytest-cov>=4.1.0 \
+    python-dotenv>=1.0.0 \
+    tqdm>=4.66.0 \
+    click>=8.1.0 \
+    pyyaml>=6.0.0 \
+    requests>=2.31.0 \
+    gunicorn[gthread]==21.2.0
+
+# ============================================================================
+# Stage 3: Application build
+# ============================================================================
+FROM dependencies AS app-build
+
+# Copy application source code
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY docker/entrypoint.sh ./entrypoint.sh
+COPY .env.template ./.env.template
+
+# Create necessary directories
+RUN mkdir -p /app/data/raw /app/data/processed /app/plots /app/logs /app/models
+
+# Set proper permissions
+RUN chmod +x scripts/*.py 2>/dev/null || true && \
+    chmod +x entrypoint.sh
+
+# ============================================================================
+# Stage 4: Production runtime
+# ============================================================================
+FROM app-build AS production
+
+# Create non-root user for security
+RUN groupadd -r mlops && useradd -r -g mlops -d /app -s /bin/bash mlops
+
+# Set ownership of application directory
+RUN chown -R mlops:mlops /app
+
+# Switch to non-root user
+USER mlops
+
+# Set working directory
+WORKDIR /app
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Set entrypoint for proper signal handling
+ENTRYPOINT ["./entrypoint.sh"]
+
+# Default command with proper signal handling
+CMD ["gunicorn", "src.api.main:app", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "1", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--worker-connections", "1000", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "--graceful-timeout", "30", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--log-level", "info", \
+     "--preload"]
+
+# ============================================================================
+# Stage 5: Development runtime (optional)
+# ============================================================================
+FROM app-build AS development
+
+# Install development dependencies
+RUN pip install --no-cache-dir \
+    jupyter==1.0.0 \
+    ipython==8.17.2 \
+    debugpy==1.8.0
+
+# Create non-root user
+RUN groupadd -r mlops && useradd -r -g mlops -d /app -s /bin/bash mlops
+RUN chown -R mlops:mlops /app
+USER mlops
+
+WORKDIR /app
+EXPOSE 8000
+
+# Set entrypoint for proper signal handling
+ENTRYPOINT ["./entrypoint.sh"]
+
+# Development command with hot reload
+CMD ["uvicorn", "src.api.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--reload", \
+     "--log-level", "debug"]
