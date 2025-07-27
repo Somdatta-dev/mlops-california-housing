@@ -228,10 +228,82 @@ class PrometheusMetrics:
             endpoint=endpoint
         ).observe(duration)
     
-    def record_prediction(self, model_version: str, prediction_type: str, 
+    def record_prediction(self, duration_ms: float, model_version: Optional[str] = None, 
+                         prediction_value: Optional[float] = None) -> None:
+        """
+        Record single prediction metrics.
+        
+        Args:
+            duration_ms: Prediction duration in milliseconds
+            model_version: Optional version of the model used
+            prediction_value: Optional prediction value for distribution tracking
+        """
+        # Convert milliseconds to seconds for Prometheus
+        duration_seconds = duration_ms / 1000.0
+        
+        model_ver = model_version or "unknown"
+        
+        self.predictions_total.labels(
+            model_version=model_ver,
+            prediction_type="single"
+        ).inc()
+        
+        self.prediction_duration.labels(
+            model_version=model_ver
+        ).observe(duration_seconds)
+        
+        if prediction_value is not None:
+            self.prediction_values.labels(
+                model_version=model_ver
+            ).observe(prediction_value)
+    
+    def record_batch_prediction(self, batch_size: int, successful_predictions: int,
+                              failed_predictions: int, total_processing_time_ms: float,
+                              model_version: Optional[str] = None) -> None:
+        """
+        Record batch prediction metrics.
+        
+        Args:
+            batch_size: Total number of predictions in batch
+            successful_predictions: Number of successful predictions
+            failed_predictions: Number of failed predictions
+            total_processing_time_ms: Total processing time in milliseconds
+            model_version: Optional version of the model used
+        """
+        # Convert milliseconds to seconds for Prometheus
+        duration_seconds = total_processing_time_ms / 1000.0
+        
+        model_ver = model_version or "unknown"
+        
+        # Record batch prediction
+        self.predictions_total.labels(
+            model_version=model_ver,
+            prediction_type="batch"
+        ).inc()
+        
+        # Record batch duration
+        self.prediction_duration.labels(
+            model_version=model_ver
+        ).observe(duration_seconds)
+        
+        # Record individual prediction counts
+        for _ in range(successful_predictions):
+            self.predictions_total.labels(
+                model_version=model_ver,
+                prediction_type="single"
+            ).inc()
+        
+        # Record failed predictions as errors
+        for _ in range(failed_predictions):
+            self.errors_total.labels(
+                error_type="prediction_failed",
+                endpoint="predict_batch"
+            ).inc()
+    
+    def record_original_prediction(self, model_version: str, prediction_type: str, 
                          duration: float, prediction_value: Optional[float] = None) -> None:
         """
-        Record prediction metrics.
+        Record prediction metrics (original method for backward compatibility).
         
         Args:
             model_version: Version of the model used

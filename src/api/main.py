@@ -21,7 +21,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import APIConfig, ModelConfig, get_api_config, get_model_config, setup_logging
 from .metrics import PrometheusMetrics, initialize_metrics, get_metrics
 from .model_loader import ModelLoader, initialize_model_loader, get_model_loader
+from .database import DatabaseManager, initialize_database_manager, get_database_manager
 from .health import router as health_router
+from .predictions import router as predictions_router
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,9 @@ async def lifespan(app: FastAPI):
             'api_version': api_config.version
         })
         
+        # Initialize database manager
+        database_manager = initialize_database_manager(api_config)
+        
         # Initialize model loader
         model_loader = initialize_model_loader(
             api_config=api_config,
@@ -73,6 +78,7 @@ async def lifespan(app: FastAPI):
         app.state.model_config = model_config
         app.state.metrics = metrics
         app.state.model_loader = model_loader
+        app.state.database_manager = database_manager
         
         logger.info("API startup completed successfully")
         
@@ -167,7 +173,7 @@ def setup_middleware(app: FastAPI, config: APIConfig) -> None:
             response.headers["X-Process-Time"] = str(process_time)
             
             # Record metrics
-            if hasattr(app.state, 'metrics'):
+            if hasattr(app.state, 'metrics') and app.state.metrics:
                 app.state.metrics.record_request(
                     method=request.method,
                     endpoint=str(request.url.path),
@@ -181,7 +187,7 @@ def setup_middleware(app: FastAPI, config: APIConfig) -> None:
             process_time = time.time() - start_time
             
             # Record error metrics
-            if hasattr(app.state, 'metrics'):
+            if hasattr(app.state, 'metrics') and app.state.metrics:
                 app.state.metrics.record_request(
                     method=request.method,
                     endpoint=str(request.url.path),
@@ -343,7 +349,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
         )
         
         # Record error metrics
-        if hasattr(app.state, 'metrics'):
+        if hasattr(app.state, 'metrics') and app.state.metrics:
             app.state.metrics.record_error(
                 error_type=type(exc).__name__,
                 endpoint=str(request.url.path)
@@ -370,6 +376,9 @@ def setup_routers(app: FastAPI) -> None:
     """
     # Health check router
     app.include_router(health_router)
+    
+    # Predictions router
+    app.include_router(predictions_router)
     
     # Root endpoint
     @app.get("/", response_class=PlainTextResponse)
