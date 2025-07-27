@@ -1,0 +1,533 @@
+name: Dependency Updates and Security Monitoring
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'requirements.txt'
+      - 'Dockerfile*'
+      - 'docker-compose*.yml'
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  # ============================================================================
+  # Check for Dependency Updates
+  # ============================================================================
+  check-dependencies:
+    name: Check Dependencies
+    runs-on: ubuntu-latest
+    
+    outputs:
+      has-updates: ${{ steps.check.outputs.has-updates }}
+      security-updates: ${{ steps.security.outputs.has-security-updates }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install pip-tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-tools pip-audit safety
+
+    - name: Check for outdated packages
+      id: check
+      run: |
+        # Create a temporary requirements file with current versions
+        pip install -r requirements.txt
+        pip freeze > current-requirements.txt
+        
+        # Check for updates
+        pip list --outdated --format=json > outdated.json
+        
+        if [ -s outdated.json ] && [ "$(cat outdated.json)" != "[]" ]; then
+          echo "has-updates=true" >> $GITHUB_OUTPUT
+          echo "📦 Outdated packages found:"
+          cat outdated.json | jq -r '.[] | "\(.name): \(.version) -> \(.latest_version)"'
+        else
+          echo "has-updates=false" >> $GITHUB_OUTPUT
+          echo "✅ All packages are up to date"
+        fi
+
+    - name: Security audit
+      id: security
+      run: |
+        # Run pip-audit for security vulnerabilities
+        pip-audit --format=json --output=security-audit.json || true
+        
+        # Run safety check
+        safety check --json --output=safety-report.json || true
+        
+        # Check if there are security issues
+        if [ -f security-audit.json ] && [ "$(cat security-audit.json | jq '.vulnerabilities | length')" -gt 0 ]; then
+          echo "has-security-updates=true" >> $GITHUB_OUTPUT
+          echo "🚨 Security vulnerabilities found!"
+          cat security-audit.json | jq -r '.vulnerabilities[] | "- \(.package): \(.id) - \(.description)"'
+        else
+          echo "has-security-updates=false" >> $GITHUB_OUTPUT
+          echo "✅ No security vulnerabilities found"
+        fi
+
+    - name: Upload audit reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: dependency-audit-reports
+        path: |
+          outdated.json
+          security-audit.json
+          safety-report.json
+          current-requirements.txt
+
+  # ============================================================================
+  # Create Dependency Update PR
+  # ============================================================================
+  create-update-pr:
+    name: Create Dependency Update PR
+    runs-on: ubuntu-latest
+    needs: check-dependencies
+    if: needs.check-dependencies.outputs.has-updates == 'true' || needs.check-dependencies.outputs.security-updates == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-tools
+
+    - name: Download audit reports
+      uses: actions/download-artifact@v3
+      with:
+        name: dependency-audit-reports
+        path: ./audit-reports
+
+    - name: Update dependencies
+      run: |
+        # Backup current requirements
+        cp requirements.txt requirements.txt.backup
+        
+        # Update dependencies based on priority
+        if [ "${{ needs.check-dependencies.outputs.security-updates }}" == "true" ]; then
+          echo "🚨 Prioritizing security updates"
+          
+          # Extract vulnerable packages and update them
+          if [ -f audit-reports/security-audit.json ]; then
+            vulnerable_packages=$(cat audit-reports/security-audit.json | jq -r '.vulnerabilities[].package' | sort -u)
+            for package in $vulnerable_packages; do
+              echo "Updating vulnerable package: $package"
+              pip install --upgrade "$package"
+            done
+          fi
+        fi
+        
+        # Update all packages to latest versions (with caution)
+        pip install --upgrade -r requirements.txt
+        pip freeze > requirements-updated.txt
+        
+        # Create a more conservative update by only updating patch versions
+        python << 'EOF'
+        import re
+        import subprocess
+        import json
+        
+        # Read current and updated requirements
+        with open('requirements.txt.backup', 'r') as f:
+            current_reqs = f.read()
+        
+        with open('requirements-updated.txt', 'r') as f:
+            updated_reqs = f.read()
+        
+        # Parse outdated packages
+        try:
+            with open('audit-reports/outdated.json', 'r') as f:
+                outdated = json.load(f)
+        except:
+            outdated = []
+        
+        # Create conservative update - only minor/patch updates for non-security issues
+        conservative_updates = []
+        for pkg in outdated:
+            current_version = pkg['version']
+            latest_version = pkg['latest_version']
+            
+            # Parse version numbers
+            current_parts = current_version.split('.')
+            latest_parts = latest_version.split('.')
+            
+            # Only update if it's a minor or patch version increase
+            if len(current_parts) >= 2 and len(latest_parts) >= 2:
+                if (int(latest_parts[0]) == int(current_parts[0]) and 
+                    int(latest_parts[1]) <= int(current_parts[1]) + 1):
+                    conservative_updates.append(f"{pkg['name']}>={latest_version}")
+                else:
+                    # Keep current version for major updates
+                    conservative_updates.append(f"{pkg['name']}>={current_version}")
+        
+        print("Conservative updates prepared")
+        EOF
+
+    - name: Test updated dependencies
+      run: |
+        # Install updated dependencies
+        pip install -r requirements-updated.txt
+        
+        # Run basic import tests
+        python -c "
+        import sys
+        try:
+            import torch
+            import xgboost
+            import lightgbm
+            import mlflow
+            import fastapi
+            import pandas
+            import numpy
+            import sklearn
+            print('✅ All critical imports successful')
+        except ImportError as e:
+            print(f'❌ Import error: {e}')
+            sys.exit(1)
+        "
+
+    - name: Create updated requirements.txt
+      run: |
+        # Use the tested updated requirements
+        mv requirements-updated.txt requirements.txt
+        
+        # Sort requirements for consistency
+        sort requirements.txt -o requirements.txt
+
+    - name: Generate update summary
+      run: |
+        cat > update-summary.md << 'EOF'
+        # Dependency Update Summary
+        
+        ## 📦 Updated Packages
+        
+        EOF
+        
+        # Compare old and new requirements
+        if [ -f audit-reports/outdated.json ]; then
+          echo "### Outdated Packages Updated:" >> update-summary.md
+          cat audit-reports/outdated.json | jq -r '.[] | "- **\(.name)**: \(.version) → \(.latest_version)"' >> update-summary.md
+        fi
+        
+        if [ -f audit-reports/security-audit.json ]; then
+          echo "" >> update-summary.md
+          echo "### 🚨 Security Updates:" >> update-summary.md
+          cat audit-reports/security-audit.json | jq -r '.vulnerabilities[] | "- **\(.package)**: \(.id) - \(.description)"' >> update-summary.md
+        fi
+        
+        echo "" >> update-summary.md
+        echo "## 🧪 Testing" >> update-summary.md
+        echo "- [x] Basic import tests passed" >> update-summary.md
+        echo "- [ ] Full test suite (will run in PR)" >> update-summary.md
+        echo "- [ ] Docker build test (will run in PR)" >> update-summary.md
+        
+        echo "" >> update-summary.md
+        echo "## 📋 Checklist" >> update-summary.md
+        echo "- [ ] Review changes carefully" >> update-summary.md
+        echo "- [ ] Test in development environment" >> update-summary.md
+        echo "- [ ] Verify GPU functionality still works" >> update-summary.md
+        echo "- [ ] Check for breaking changes in updated packages" >> update-summary.md
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: |
+          chore: update dependencies
+          
+          - Update outdated packages to latest versions
+          - Address security vulnerabilities
+          - Maintain compatibility with existing code
+        title: "🔄 Automated Dependency Updates"
+        body-path: update-summary.md
+        branch: dependency-updates/automated-${{ github.run_number }}
+        delete-branch: true
+        labels: |
+          dependencies
+          automated
+          ${{ needs.check-dependencies.outputs.security-updates == 'true' && 'security' || '' }}
+
+  # ============================================================================
+  # Docker Base Image Updates
+  # ============================================================================
+  check-docker-updates:
+    name: Check Docker Base Images
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check CUDA base image updates
+      run: |
+        # Get current CUDA version from Dockerfile
+        current_cuda=$(grep "FROM nvidia/cuda:" Dockerfile | head -1 | sed 's/.*nvidia\/cuda:\([^-]*\).*/\1/')
+        echo "Current CUDA version: $current_cuda"
+        
+        # Check for newer CUDA versions (this would typically query NVIDIA's registry)
+        echo "Checking for CUDA updates..."
+        
+        # For now, just log the current version
+        echo "Current CUDA base image version: $current_cuda"
+
+    - name: Check Python base image updates
+      run: |
+        # Check Python version in CPU Dockerfile
+        if [ -f Dockerfile.cpu ]; then
+          current_python=$(grep "FROM python:" Dockerfile.cpu | head -1 | sed 's/.*python:\([^-]*\).*/\1/')
+          echo "Current Python version: $current_python"
+        fi
+
+    - name: Security scan base images
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'nvidia/cuda:12.8.0-runtime-ubuntu22.04'
+        format: 'table'
+        exit-code: '0'
+
+  # ============================================================================
+  # Security Monitoring
+  # ============================================================================
+  security-monitoring:
+    name: Security Monitoring
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety pip-audit semgrep
+
+    - name: Run Bandit security scan
+      run: |
+        bandit -r src/ -f json -o bandit-security-report.json || true
+        bandit -r src/ -f txt || true
+
+    - name: Run Semgrep security scan
+      run: |
+        semgrep --config=auto src/ --json --output=semgrep-report.json || true
+
+    - name: Check for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-monitoring-reports
+        path: |
+          bandit-security-report.json
+          semgrep-report.json
+
+    - name: Create security issue if vulnerabilities found
+      uses: actions/github-script@v6
+      if: always()
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let hasIssues = false;
+          let issueBody = '# 🚨 Security Monitoring Alert\n\n';
+          
+          // Check Bandit results
+          try {
+            const banditReport = JSON.parse(fs.readFileSync('bandit-security-report.json', 'utf8'));
+            if (banditReport.results && banditReport.results.length > 0) {
+              hasIssues = true;
+              issueBody += '## Bandit Security Issues\n\n';
+              banditReport.results.forEach(issue => {
+                issueBody += `- **${issue.test_name}** in \`${issue.filename}:${issue.line_number}\`\n`;
+                issueBody += `  - ${issue.issue_text}\n`;
+              });
+            }
+          } catch (e) {
+            console.log('No Bandit report found or parsing error');
+          }
+          
+          // Check Semgrep results
+          try {
+            const semgrepReport = JSON.parse(fs.readFileSync('semgrep-report.json', 'utf8'));
+            if (semgrepReport.results && semgrepReport.results.length > 0) {
+              hasIssues = true;
+              issueBody += '\n## Semgrep Security Issues\n\n';
+              semgrepReport.results.forEach(issue => {
+                issueBody += `- **${issue.check_id}** in \`${issue.path}:${issue.start.line}\`\n`;
+                issueBody += `  - ${issue.extra.message}\n`;
+              });
+            }
+          } catch (e) {
+            console.log('No Semgrep report found or parsing error');
+          }
+          
+          if (hasIssues) {
+            issueBody += '\n## Action Required\n\n';
+            issueBody += 'Please review and address these security issues.\n';
+            issueBody += 'This issue was automatically created by the security monitoring workflow.\n';
+            
+            // Create issue
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Security Vulnerabilities Detected',
+              body: issueBody,
+              labels: ['security', 'automated', 'high-priority']
+            });
+          }
+
+  # ============================================================================
+  # License Compliance Check
+  # ============================================================================
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install license checker
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-licenses
+
+    - name: Check licenses
+      run: |
+        pip install -r requirements.txt
+        pip-licenses --format=json --output-file=licenses.json
+        pip-licenses --format=plain-vertical
+
+    - name: Validate license compatibility
+      run: |
+        python << 'EOF'
+        import json
+        
+        # Define allowed licenses
+        ALLOWED_LICENSES = {
+            'MIT', 'BSD', 'BSD-3-Clause', 'BSD-2-Clause', 'Apache', 'Apache 2.0', 
+            'Apache Software License', 'Python Software Foundation License',
+            'Mozilla Public License 2.0 (MPL 2.0)', 'ISC License (ISCL)'
+        }
+        
+        # Define problematic licenses
+        PROBLEMATIC_LICENSES = {
+            'GPL', 'AGPL', 'LGPL', 'Copyleft'
+        }
+        
+        try:
+            with open('licenses.json', 'r') as f:
+                licenses = json.load(f)
+            
+            issues = []
+            for pkg in licenses:
+                license_name = pkg.get('License', 'Unknown')
+                if any(prob in license_name for prob in PROBLEMATIC_LICENSES):
+                    issues.append(f"❌ {pkg['Name']}: {license_name}")
+                elif license_name not in ALLOWED_LICENSES and license_name != 'Unknown':
+                    issues.append(f"⚠️  {pkg['Name']}: {license_name} (needs review)")
+            
+            if issues:
+                print("License compliance issues found:")
+                for issue in issues:
+                    print(issue)
+                exit(1)
+            else:
+                print("✅ All licenses are compatible")
+                
+        except Exception as e:
+            print(f"Error checking licenses: {e}")
+            exit(1)
+        EOF
+
+    - name: Upload license report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: license-report
+        path: licenses.json
+
+  # ============================================================================
+  # Summary and Notifications
+  # ============================================================================
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [check-dependencies, create-update-pr, check-docker-updates, security-monitoring, license-check]
+    if: always()
+    
+    steps:
+    - name: Create summary
+      run: |
+        echo "## 🔍 Dependency and Security Monitoring Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Results:" >> $GITHUB_STEP_SUMMARY
+        echo "- Dependency Check: ${{ needs.check-dependencies.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Update PR: ${{ needs.create-update-pr.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Docker Updates: ${{ needs.check-docker-updates.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Security Monitoring: ${{ needs.security-monitoring.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- License Check: ${{ needs.license-check.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.check-dependencies.outputs.has-updates }}" == "true" ]; then
+          echo "📦 Dependency updates available" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.check-dependencies.outputs.security-updates }}" == "true" ]; then
+          echo "🚨 Security updates required" >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Notify on security issues
+      uses: 8398a7/action-slack@v3
+      if: needs.check-dependencies.outputs.security-updates == 'true' || needs.security-monitoring.result == 'failure'
+      with:
+        status: 'warning'
+        channel: '#security'
+        text: |
+          🚨 Security Alert: MLOps California Housing
+          
+          Security issues detected in dependency monitoring:
+          - Security updates needed: ${{ needs.check-dependencies.outputs.security-updates }}
+          - Security scan status: ${{ needs.security-monitoring.result }}
+          
+          Please review and address immediately.
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

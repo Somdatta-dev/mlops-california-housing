@@ -1,0 +1,445 @@
+name: Release Management
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================================================
+  # Validate Release
+  # ============================================================================
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Determine version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          version="${{ github.event.inputs.version }}"
+          is_prerelease="${{ github.event.inputs.prerelease }}"
+        else
+          version="${{ github.ref_name }}"
+          # Check if it's a pre-release (contains alpha, beta, rc)
+          if [[ "$version" =~ (alpha|beta|rc) ]]; then
+            is_prerelease="true"
+          else
+            is_prerelease="false"
+          fi
+        fi
+        
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "is-prerelease=$is_prerelease" >> $GITHUB_OUTPUT
+        
+        echo "Release version: $version"
+        echo "Is pre-release: $is_prerelease"
+
+    - name: Validate version format
+      run: |
+        version="${{ steps.version.outputs.version }}"
+        if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+          echo "❌ Invalid version format: $version"
+          echo "Expected format: v1.0.0 or v1.0.0-alpha1"
+          exit 1
+        fi
+        echo "✅ Version format is valid"
+
+    - name: Check if tag exists
+      run: |
+        version="${{ steps.version.outputs.version }}"
+        if git tag -l | grep -q "^$version$"; then
+          echo "❌ Tag $version already exists"
+          exit 1
+        fi
+        echo "✅ Tag $version is available"
+
+    - name: Validate changelog
+      run: |
+        if [ ! -f CHANGELOG.md ]; then
+          echo "⚠️ CHANGELOG.md not found"
+          echo "Consider adding a changelog for better release documentation"
+        else
+          version="${{ steps.version.outputs.version }}"
+          if grep -q "$version" CHANGELOG.md; then
+            echo "✅ Changelog entry found for $version"
+          else
+            echo "⚠️ No changelog entry found for $version"
+          fi
+        fi
+
+  # ============================================================================
+  # Run Full Test Suite
+  # ============================================================================
+  full-test-suite:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    needs: validate-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov pytest-mock
+
+    - name: Run comprehensive tests
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=html
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        GPU_ENABLED: false
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: release-test-results
+        path: |
+          htmlcov/
+          coverage.xml
+
+  # ============================================================================
+  # Build Release Artifacts
+  # ============================================================================
+  build-release-artifacts:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: [validate-release, full-test-suite]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push release images
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        target: production
+        platforms: linux/amd64
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}-gpu
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-gpu
+        labels: |
+          org.opencontainers.image.title=MLOps California Housing (GPU)
+          org.opencontainers.image.description=GPU-accelerated MLOps platform for California Housing prediction
+          org.opencontainers.image.version=${{ needs.validate-release.outputs.version }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and push CPU release images
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.cpu
+        target: production
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}-cpu
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-cpu
+        labels: |
+          org.opencontainers.image.title=MLOps California Housing (CPU)
+          org.opencontainers.image.description=CPU-only MLOps platform for California Housing prediction
+          org.opencontainers.image.version=${{ needs.validate-release.outputs.version }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Create source archive
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        git archive --format=tar.gz --prefix=mlops-california-housing-${version}/ HEAD > mlops-california-housing-${version}.tar.gz
+        
+        # Create checksums
+        sha256sum mlops-california-housing-${version}.tar.gz > mlops-california-housing-${version}.tar.gz.sha256
+
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-artifacts
+        path: |
+          mlops-california-housing-*.tar.gz
+          mlops-california-housing-*.tar.gz.sha256
+
+  # ============================================================================
+  # Security Scan for Release
+  # ============================================================================
+  security-scan-release:
+    name: Security Scan for Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-release-artifacts]
+    
+    strategy:
+      matrix:
+        variant: [gpu, cpu]
+    
+    steps:
+    - name: Run comprehensive security scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}-${{ matrix.variant }}
+        format: 'sarif'
+        output: 'trivy-release-${{ matrix.variant }}.sarif'
+
+    - name: Upload security scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-release-${{ matrix.variant }}.sarif'
+
+    - name: Check for critical vulnerabilities
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}-${{ matrix.variant }}
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        severity: 'CRITICAL'
+
+  # ============================================================================
+  # Create GitHub Release
+  # ============================================================================
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, full-test-suite, build-release-artifacts, security-scan-release]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download release artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: release-artifacts
+        path: ./artifacts
+
+    - name: Generate release notes
+      id: release-notes
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        # Generate release notes
+        cat > release-notes.md << EOF
+        # MLOps California Housing Platform $version
+        
+        ## 🚀 Features
+        - GPU-accelerated machine learning with CUDA support
+        - 5 different ML models: Linear Regression, Random Forest, XGBoost, Neural Network, LightGBM
+        - FastAPI REST API with comprehensive validation
+        - Real-time monitoring with Prometheus and Grafana
+        - Docker containerization with multi-stage builds
+        - MLflow experiment tracking and model registry
+        - DVC data versioning with Google Drive remote
+        
+        ## 📦 Docker Images
+        - GPU variant: \`ghcr.io/${{ github.repository }}:$version-gpu\`
+        - CPU variant: \`ghcr.io/${{ github.repository }}:$version-cpu\`
+        
+        ## 🔧 Installation
+        
+        ### Using Docker (Recommended)
+        \`\`\`bash
+        # GPU version (requires NVIDIA Docker)
+        docker run -p 8000:8000 --gpus all ghcr.io/${{ github.repository }}:$version-gpu
+        
+        # CPU version
+        docker run -p 8000:8000 ghcr.io/${{ github.repository }}:$version-cpu
+        \`\`\`
+        
+        ### Using Docker Compose
+        \`\`\`bash
+        wget https://github.com/${{ github.repository }}/releases/download/$version/mlops-california-housing-$version.tar.gz
+        tar -xzf mlops-california-housing-$version.tar.gz
+        cd mlops-california-housing-$version
+        docker-compose up -d
+        \`\`\`
+        
+        ## 📊 API Endpoints
+        - \`GET /health\` - Health check
+        - \`GET /model/info\` - Model information
+        - \`POST /predict\` - Single prediction
+        - \`POST /predict/batch\` - Batch predictions
+        - \`GET /metrics\` - Prometheus metrics
+        
+        ## 🔍 What's Changed
+        EOF
+        
+        # Add git log since last tag
+        if git describe --tags --abbrev=0 2>/dev/null; then
+          last_tag=$(git describe --tags --abbrev=0)
+          echo "" >> release-notes.md
+          echo "### Commits since $last_tag:" >> release-notes.md
+          git log --oneline ${last_tag}..HEAD >> release-notes.md
+        fi
+        
+        # Add checksums
+        echo "" >> release-notes.md
+        echo "## 🔐 Checksums" >> release-notes.md
+        echo "\`\`\`" >> release-notes.md
+        cat artifacts/*.sha256 >> release-notes.md
+        echo "\`\`\`" >> release-notes.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.validate-release.outputs.version }}
+        name: MLOps California Housing ${{ needs.validate-release.outputs.version }}
+        body_path: release-notes.md
+        draft: false
+        prerelease: ${{ needs.validate-release.outputs.is-prerelease == 'true' }}
+        files: |
+          artifacts/mlops-california-housing-*.tar.gz
+          artifacts/mlops-california-housing-*.tar.gz.sha256
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # Deploy to Production (for stable releases)
+  # ============================================================================
+  deploy-production-release:
+    name: Deploy to Production
+    uses: ./.github/workflows/deploy.yml
+    needs: [validate-release, create-github-release]
+    if: needs.validate-release.outputs.is-prerelease == 'false'
+    secrets: inherit
+    with:
+      environment: production
+      image_tag: ${{ needs.validate-release.outputs.version }}
+
+  # ============================================================================
+  # Update Documentation
+  # ============================================================================
+  update-documentation:
+    name: Update Documentation
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-github-release]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update version in documentation
+      run: |
+        version="${{ needs.validate-release.outputs.version }}"
+        
+        # Update README.md with new version
+        if [ -f README.md ]; then
+          sed -i "s/ghcr.io\/${{ github.repository }}:[^-]*-/ghcr.io\/${{ github.repository }}:$version-/g" README.md
+        fi
+        
+        # Update docker-compose files
+        find . -name "docker-compose*.yml" -exec sed -i "s/image: ghcr.io\/${{ github.repository }}:[^-]*-/image: ghcr.io\/${{ github.repository }}:$version-/g" {} \;
+
+    - name: Commit documentation updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        if git diff --quiet; then
+          echo "No documentation changes to commit"
+        else
+          git add .
+          git commit -m "docs: update version references to ${{ needs.validate-release.outputs.version }}"
+          git push
+        fi
+
+  # ============================================================================
+  # Notify Release
+  # ============================================================================
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-github-release]
+    if: always()
+    
+    steps:
+    - name: Notify Slack
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        channel: '#releases'
+        text: |
+          🎉 New Release: MLOps California Housing ${{ needs.validate-release.outputs.version }}
+          
+          📦 Docker Images:
+          - GPU: `ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}-gpu`
+          - CPU: `ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}-cpu`
+          
+          🔗 Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}
+          
+          Status: ${{ needs.create-github-release.result == 'success' && '✅ Success' || '❌ Failed' }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Create release summary
+      run: |
+        echo "## 🎉 Release Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version**: ${{ needs.validate-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Pre-release**: ${{ needs.validate-release.outputs.is-prerelease }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Status**: ${{ needs.create-github-release.result == 'success' && '✅ Success' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- GPU Docker Image: \`ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}-gpu\`" >> $GITHUB_STEP_SUMMARY
+        echo "- CPU Docker Image: \`ghcr.io/${{ github.repository }}:${{ needs.validate-release.outputs.version }}-cpu\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Source Archive: \`mlops-california-housing-${{ needs.validate-release.outputs.version }}.tar.gz\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+        echo "- [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }})" >> $GITHUB_STEP_SUMMARY
+        echo "- [Docker Images](https://github.com/${{ github.repository }}/pkgs/container/mlops-california-housing)" >> $GITHUB_STEP_SUMMARY

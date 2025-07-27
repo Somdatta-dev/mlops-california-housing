@@ -1,0 +1,563 @@
+name: Deploy to Staging and Production
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: false
+        default: 'latest'
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================================================
+  # Deploy to Staging
+  # ============================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: 
+      name: staging
+      url: https://staging.mlops-california-housing.example.com
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine image tag
+      id: image-tag
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+        elif [ "${{ github.ref_type }}" == "tag" ]; then
+          echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=main" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create staging environment file
+      run: |
+        cat > .env.staging << EOF
+        # Staging Environment Configuration
+        ENVIRONMENT=staging
+        DEBUG=false
+        LOG_LEVEL=info
+        
+        # API Configuration
+        API_HOST=0.0.0.0
+        API_PORT=8000
+        API_WORKERS=2
+        
+        # Database Configuration
+        DATABASE_URL=postgresql://\${{ secrets.STAGING_DB_USER }}:\${{ secrets.STAGING_DB_PASSWORD }}@\${{ secrets.STAGING_DB_HOST }}:5432/\${{ secrets.STAGING_DB_NAME }}
+        
+        # MLflow Configuration
+        MLFLOW_TRACKING_URI=http://mlflow-staging:5000
+        MLFLOW_EXPERIMENT_NAME=california-housing-staging
+        
+        # Monitoring Configuration
+        PROMETHEUS_ENABLED=true
+        PROMETHEUS_PORT=9090
+        GRAFANA_ENABLED=true
+        
+        # GPU Configuration
+        GPU_ENABLED=true
+        CUDA_VISIBLE_DEVICES=0
+        
+        # Security Configuration
+        API_KEY_ENABLED=true
+        API_KEY=\${{ secrets.STAGING_API_KEY }}
+        CORS_ORIGINS=https://staging.mlops-california-housing.example.com
+        
+        # DVC Configuration
+        DVC_REMOTE_URL=\${{ secrets.DVC_REMOTE_URL }}
+        EOF
+
+    - name: Deploy to staging server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_PORT || 22 }}
+        script: |
+          # Create deployment directory
+          mkdir -p /opt/mlops-staging
+          cd /opt/mlops-staging
+          
+          # Pull latest image
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-gpu
+          
+          # Stop existing containers
+          docker-compose -f docker-compose.staging.yml down || true
+          
+          # Update docker-compose file
+          cat > docker-compose.staging.yml << 'EOF'
+          version: '3.8'
+          
+          services:
+            mlops-api:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-gpu
+              container_name: mlops-staging-api
+              restart: unless-stopped
+              ports:
+                - "8000:8000"
+              env_file:
+                - .env.staging
+              volumes:
+                - ./data:/app/data
+                - ./models:/app/models
+                - ./logs:/app/logs
+              deploy:
+                resources:
+                  reservations:
+                    devices:
+                      - driver: nvidia
+                        count: 1
+                        capabilities: [gpu]
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 60s
+          
+            mlflow:
+              image: python:3.10-slim
+              container_name: mlops-staging-mlflow
+              restart: unless-stopped
+              ports:
+                - "5000:5000"
+              volumes:
+                - mlflow_data:/mlflow
+              command: >
+                bash -c "
+                  pip install mlflow==2.8.0 &&
+                  mlflow server 
+                  --backend-store-uri sqlite:///mlflow/mlflow.db 
+                  --default-artifact-root /mlflow/artifacts 
+                  --host 0.0.0.0 
+                  --port 5000
+                "
+          
+            prometheus:
+              image: prom/prometheus:v2.47.0
+              container_name: mlops-staging-prometheus
+              restart: unless-stopped
+              ports:
+                - "9090:9090"
+              volumes:
+                - prometheus_data:/prometheus
+              command:
+                - '--config.file=/etc/prometheus/prometheus.yml'
+                - '--storage.tsdb.path=/prometheus'
+                - '--web.enable-lifecycle'
+          
+          volumes:
+            mlflow_data:
+            prometheus_data:
+          EOF
+          
+          # Start services
+          docker-compose -f docker-compose.staging.yml up -d
+          
+          # Wait for services to be healthy
+          sleep 60
+          
+          # Verify deployment
+          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost:8000/model/info || exit 1
+
+    - name: Copy environment file to staging
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: ${{ secrets.STAGING_PORT || 22 }}
+        source: ".env.staging"
+        target: "/opt/mlops-staging/"
+
+    - name: Run staging smoke tests
+      run: |
+        # Wait for deployment to stabilize
+        sleep 30
+        
+        # Run smoke tests against staging
+        python -m pytest tests/test_api_foundation.py::test_health_endpoint -v \
+          --base-url https://staging.mlops-california-housing.example.com
+      env:
+        STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
+
+    - name: Notify deployment status
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: |
+          Staging Deployment ${{ job.status }}
+          Environment: staging
+          Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-gpu
+          Commit: ${{ github.sha }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================================================
+  # Deploy to Production (with approval)
+  # ============================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: https://mlops-california-housing.example.com
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine image tag
+      id: image-tag
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+        elif [ "${{ github.ref_type }}" == "tag" ]; then
+          echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=main" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create production environment file
+      run: |
+        cat > .env.production << EOF
+        # Production Environment Configuration
+        ENVIRONMENT=production
+        DEBUG=false
+        LOG_LEVEL=warning
+        
+        # API Configuration
+        API_HOST=0.0.0.0
+        API_PORT=8000
+        API_WORKERS=4
+        
+        # Database Configuration
+        DATABASE_URL=postgresql://\${{ secrets.PROD_DB_USER }}:\${{ secrets.PROD_DB_PASSWORD }}@\${{ secrets.PROD_DB_HOST }}:5432/\${{ secrets.PROD_DB_NAME }}
+        
+        # MLflow Configuration
+        MLFLOW_TRACKING_URI=http://mlflow-prod:5000
+        MLFLOW_EXPERIMENT_NAME=california-housing-production
+        
+        # Monitoring Configuration
+        PROMETHEUS_ENABLED=true
+        PROMETHEUS_PORT=9090
+        GRAFANA_ENABLED=true
+        
+        # GPU Configuration
+        GPU_ENABLED=true
+        CUDA_VISIBLE_DEVICES=0
+        
+        # Security Configuration
+        API_KEY_ENABLED=true
+        API_KEY=\${{ secrets.PROD_API_KEY }}
+        CORS_ORIGINS=https://mlops-california-housing.example.com
+        
+        # DVC Configuration
+        DVC_REMOTE_URL=\${{ secrets.DVC_REMOTE_URL }}
+        
+        # Performance Configuration
+        MAX_REQUESTS=10000
+        MAX_REQUESTS_JITTER=1000
+        TIMEOUT=120
+        KEEP_ALIVE=5
+        EOF
+
+    - name: Create backup of current production
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ secrets.PROD_PORT || 22 }}
+        script: |
+          cd /opt/mlops-production
+          
+          # Create backup
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          mkdir -p backups
+          
+          # Backup current configuration
+          cp docker-compose.production.yml backups/docker-compose.production.yml.$timestamp || true
+          cp .env.production backups/.env.production.$timestamp || true
+          
+          # Backup database
+          docker exec mlops-prod-api python scripts/manage_database.py backup > backups/database_backup_$timestamp.sql || true
+          
+          echo "Backup created: $timestamp"
+
+    - name: Deploy to production server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ secrets.PROD_PORT || 22 }}
+        script: |
+          # Create deployment directory
+          mkdir -p /opt/mlops-production
+          cd /opt/mlops-production
+          
+          # Pull latest image
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-gpu
+          
+          # Update docker-compose file
+          cat > docker-compose.production.yml << 'EOF'
+          version: '3.8'
+          
+          services:
+            mlops-api:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-gpu
+              container_name: mlops-prod-api
+              restart: unless-stopped
+              ports:
+                - "8000:8000"
+              env_file:
+                - .env.production
+              volumes:
+                - ./data:/app/data
+                - ./models:/app/models
+                - ./logs:/app/logs
+              deploy:
+                resources:
+                  reservations:
+                    devices:
+                      - driver: nvidia
+                        count: 1
+                        capabilities: [gpu]
+                  limits:
+                    memory: 8G
+                    cpus: '4'
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 60s
+          
+            mlflow:
+              image: python:3.10-slim
+              container_name: mlops-prod-mlflow
+              restart: unless-stopped
+              ports:
+                - "5000:5000"
+              volumes:
+                - mlflow_data:/mlflow
+              command: >
+                bash -c "
+                  pip install mlflow==2.8.0 &&
+                  mlflow server 
+                  --backend-store-uri sqlite:///mlflow/mlflow.db 
+                  --default-artifact-root /mlflow/artifacts 
+                  --host 0.0.0.0 
+                  --port 5000
+                "
+          
+            prometheus:
+              image: prom/prometheus:v2.47.0
+              container_name: mlops-prod-prometheus
+              restart: unless-stopped
+              ports:
+                - "9090:9090"
+              volumes:
+                - prometheus_data:/prometheus
+              command:
+                - '--config.file=/etc/prometheus/prometheus.yml'
+                - '--storage.tsdb.path=/prometheus'
+                - '--web.enable-lifecycle'
+          
+            grafana:
+              image: grafana/grafana:10.1.0
+              container_name: mlops-prod-grafana
+              restart: unless-stopped
+              ports:
+                - "3000:3000"
+              environment:
+                - GF_SECURITY_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+              volumes:
+                - grafana_data:/var/lib/grafana
+          
+          volumes:
+            mlflow_data:
+            prometheus_data:
+            grafana_data:
+          EOF
+          
+          # Rolling deployment
+          docker-compose -f docker-compose.production.yml up -d --no-deps mlops-api
+          
+          # Wait for new container to be healthy
+          sleep 60
+          
+          # Verify deployment
+          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost:8000/model/info || exit 1
+          
+          # Update other services if needed
+          docker-compose -f docker-compose.production.yml up -d
+
+    - name: Copy environment file to production
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ secrets.PROD_PORT || 22 }}
+        source: ".env.production"
+        target: "/opt/mlops-production/"
+
+    - name: Run production smoke tests
+      run: |
+        # Wait for deployment to stabilize
+        sleep 60
+        
+        # Run comprehensive smoke tests
+        python -m pytest tests/test_api_foundation.py tests/test_prediction_endpoints.py -v \
+          --base-url https://mlops-california-housing.example.com \
+          -k "not test_batch_prediction"  # Skip heavy tests in smoke test
+      env:
+        PROD_API_KEY: ${{ secrets.PROD_API_KEY }}
+
+    - name: Run production health check
+      run: |
+        # Comprehensive health check
+        curl -f https://mlops-california-housing.example.com/health
+        curl -f https://mlops-california-housing.example.com/model/info
+        
+        # Test prediction endpoint
+        curl -X POST https://mlops-california-housing.example.com/predict \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${{ secrets.PROD_API_KEY }}" \
+          -d '{
+            "MedInc": 5.0,
+            "HouseAge": 10.0,
+            "AveRooms": 6.0,
+            "AveBedrms": 1.2,
+            "Population": 3000.0,
+            "AveOccup": 3.0,
+            "Latitude": 34.0,
+            "Longitude": -118.0
+          }'
+
+    - name: Notify production deployment
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: |
+          🚀 Production Deployment ${{ job.status }}
+          Environment: production
+          Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-gpu
+          Version: ${{ steps.image-tag.outputs.tag }}
+          Commit: ${{ github.sha }}
+          URL: https://mlops-california-housing.example.com
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================================================
+  # Rollback Capability
+  # ============================================================================
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy-production.result == 'failure'
+    needs: deploy-production
+    environment: production
+    
+    steps:
+    - name: Rollback production deployment
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        port: ${{ secrets.PROD_PORT || 22 }}
+        script: |
+          cd /opt/mlops-production
+          
+          # Find latest backup
+          latest_backup=$(ls -t backups/docker-compose.production.yml.* | head -n1)
+          latest_env_backup=$(ls -t backups/.env.production.* | head -n1)
+          
+          if [ -f "$latest_backup" ] && [ -f "$latest_env_backup" ]; then
+            echo "Rolling back to: $latest_backup"
+            
+            # Restore configuration
+            cp "$latest_backup" docker-compose.production.yml
+            cp "$latest_env_backup" .env.production
+            
+            # Restart with previous configuration
+            docker-compose -f docker-compose.production.yml down
+            docker-compose -f docker-compose.production.yml up -d
+            
+            # Wait and verify
+            sleep 60
+            curl -f http://localhost:8000/health || exit 1
+            
+            echo "Rollback completed successfully"
+          else
+            echo "No backup found for rollback"
+            exit 1
+          fi
+
+    - name: Notify rollback
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        text: |
+          ⚠️ Production Rollback ${{ job.status }}
+          Reason: Deployment failure
+          Environment: production
+          Action: Restored to previous version
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

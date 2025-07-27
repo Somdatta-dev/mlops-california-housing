@@ -1,0 +1,596 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+env:
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  # ============================================================================
+  # PR Information and Validation
+  # ============================================================================
+  pr-info:
+    name: PR Information
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    outputs:
+      has-backend-changes: ${{ steps.changes.outputs.backend }}
+      has-frontend-changes: ${{ steps.changes.outputs.frontend }}
+      has-docker-changes: ${{ steps.changes.outputs.docker }}
+      has-docs-changes: ${{ steps.changes.outputs.docs }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Detect changes
+      uses: dorny/paths-filter@v2
+      id: changes
+      with:
+        filters: |
+          backend:
+            - 'src/**'
+            - 'tests/**'
+            - 'requirements.txt'
+            - 'scripts/**'
+          frontend:
+            - 'frontend/**'
+            - 'package.json'
+            - 'package-lock.json'
+          docker:
+            - 'Dockerfile*'
+            - 'docker-compose*.yml'
+            - 'docker/**'
+          docs:
+            - '*.md'
+            - 'docs/**'
+
+    - name: PR Size Check
+      run: |
+        files_changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+        lines_changed=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | grep -oE '[0-9]+' | head -1 || echo "0")
+        
+        echo "Files changed: $files_changed"
+        echo "Lines changed: $lines_changed"
+        
+        if [ "$files_changed" -gt 50 ]; then
+          echo "⚠️ Large PR: $files_changed files changed"
+          echo "Consider breaking this into smaller PRs"
+        fi
+        
+        if [ "$lines_changed" -gt 1000 ]; then
+          echo "⚠️ Large PR: $lines_changed lines changed"
+          echo "Consider breaking this into smaller PRs"
+        fi
+
+    - name: Check PR title and description
+      run: |
+        title="${{ github.event.pull_request.title }}"
+        body="${{ github.event.pull_request.body }}"
+        
+        # Check title format
+        if [[ ! "$title" =~ ^(feat|fix|docs|style|refactor|test|chore)(\(.+\))?: .+ ]]; then
+          echo "⚠️ PR title should follow conventional commits format"
+          echo "Examples: feat: add new feature, fix(api): resolve bug"
+        fi
+        
+        # Check if description exists
+        if [ -z "$body" ] || [ "$body" == "null" ]; then
+          echo "⚠️ Please add a description to your PR"
+        fi
+
+  # ============================================================================
+  # Code Quality Checks for PR
+  # ============================================================================
+  code-quality-pr:
+    name: Code Quality (PR)
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy pytest
+        pip install -r requirements.txt
+
+    - name: Run Black formatter check on changed files
+      run: |
+        # Get changed Python files
+        changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.py$' || true)
+        if [ -n "$changed_files" ]; then
+          echo "Checking formatting for: $changed_files"
+          black --check --diff $changed_files
+        else
+          echo "No Python files changed"
+        fi
+
+    - name: Run Flake8 on changed files
+      run: |
+        changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.py$' || true)
+        if [ -n "$changed_files" ]; then
+          echo "Running linting for: $changed_files"
+          flake8 $changed_files --max-line-length=88 --extend-ignore=E203,W503
+        else
+          echo "No Python files changed"
+        fi
+
+    - name: Run MyPy on changed files
+      run: |
+        changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.py$' || true)
+        if [ -n "$changed_files" ]; then
+          echo "Running type checking for: $changed_files"
+          mypy $changed_files --ignore-missing-imports --no-strict-optional
+        else
+          echo "No Python files changed"
+        fi
+      continue-on-error: true
+
+  # ============================================================================
+  # Unit Tests for PR
+  # ============================================================================
+  test-pr:
+    name: Unit Tests (PR)
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov pytest-mock
+
+    - name: Create test environment
+      run: |
+        mkdir -p data/raw data/processed plots logs models
+        cp .env.template .env
+        echo "GPU_ENABLED=false" >> .env
+
+    - name: Run tests with coverage
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        GPU_ENABLED: false
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: pr-tests
+        name: pr-coverage
+
+  # ============================================================================
+  # Docker Build Test for PR
+  # ============================================================================
+  docker-build-pr:
+    name: Docker Build Test (PR)
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-docker-changes == 'true' || needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build CPU Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.cpu
+        target: production
+        push: false
+        tags: mlops-california-housing:pr-test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test Docker image
+      run: |
+        docker run --rm -d --name pr-test -p 8000:8000 \
+          -e GPU_ENABLED=false \
+          -e DATABASE_URL=sqlite:///app/data/test.db \
+          mlops-california-housing:pr-test
+        
+        sleep 30
+        curl -f http://localhost:8000/health || exit 1
+        docker stop pr-test
+
+  # ============================================================================
+  # Security Scan for PR
+  # ============================================================================
+  security-scan-pr:
+    name: Security Scan (PR)
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Check for high/critical vulnerabilities
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        severity: 'CRITICAL,HIGH'
+
+  # ============================================================================
+  # Performance Impact Analysis
+  # ============================================================================
+  performance-impact:
+    name: Performance Impact Analysis
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout base branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.base_ref }}
+        path: base
+
+    - name: Checkout PR branch
+      uses: actions/checkout@v4
+      with:
+        path: pr
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install -r pr/requirements.txt
+        pip install locust memory-profiler
+
+    - name: Run performance benchmark on base
+      run: |
+        cd base
+        python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8001 &
+        BASE_PID=$!
+        sleep 10
+        
+        locust -f ../pr/tests/locustfile.py --headless -u 10 -r 2 -t 30s \
+          --host http://localhost:8001 --csv base-performance
+        
+        kill $BASE_PID
+      env:
+        PYTHONPATH: ${{ github.workspace }}/base
+        GPU_ENABLED: false
+
+    - name: Run performance benchmark on PR
+      run: |
+        cd pr
+        python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8002 &
+        PR_PID=$!
+        sleep 10
+        
+        locust -f tests/locustfile.py --headless -u 10 -r 2 -t 30s \
+          --host http://localhost:8002 --csv pr-performance
+        
+        kill $PR_PID
+      env:
+        PYTHONPATH: ${{ github.workspace }}/pr
+        GPU_ENABLED: false
+
+    - name: Compare performance results
+      run: |
+        python << 'EOF'
+        import pandas as pd
+        import sys
+        
+        try:
+            base_stats = pd.read_csv('base-performance_stats.csv')
+            pr_stats = pd.read_csv('pr-performance_stats.csv')
+            
+            base_avg_response = base_stats['Average Response Time'].iloc[0]
+            pr_avg_response = pr_stats['Average Response Time'].iloc[0]
+            
+            base_rps = base_stats['Requests/s'].iloc[0]
+            pr_rps = pr_stats['Requests/s'].iloc[0]
+            
+            response_change = ((pr_avg_response - base_avg_response) / base_avg_response) * 100
+            rps_change = ((pr_rps - base_rps) / base_rps) * 100
+            
+            print(f"Performance Impact Analysis:")
+            print(f"Average Response Time: {response_change:.2f}% change")
+            print(f"Requests per Second: {rps_change:.2f}% change")
+            
+            if response_change > 20:
+                print("⚠️ Significant performance degradation detected!")
+                sys.exit(1)
+            elif response_change < -10:
+                print("✅ Performance improvement detected!")
+            else:
+                print("✅ Performance impact within acceptable range")
+                
+        except Exception as e:
+            print(f"Could not compare performance: {e}")
+        EOF
+
+    - name: Upload performance comparison
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-comparison
+        path: |
+          base-performance_*.csv
+          pr-performance_*.csv
+
+  # ============================================================================
+  # Documentation Check for PR
+  # ============================================================================
+  docs-check-pr:
+    name: Documentation Check (PR)
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-docs-changes == 'true' || needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check for documentation updates
+      run: |
+        changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+        
+        # Check if code changes require doc updates
+        if echo "$changed_files" | grep -E '\.(py)$' > /dev/null; then
+          if ! echo "$changed_files" | grep -E '\.(md)$' > /dev/null; then
+            echo "⚠️ Code changes detected but no documentation updates"
+            echo "Consider updating relevant documentation"
+          fi
+        fi
+
+    - name: Validate markdown files
+      run: |
+        # Install markdownlint
+        npm install -g markdownlint-cli
+        
+        # Check changed markdown files
+        changed_md=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.md$' || true)
+        if [ -n "$changed_md" ]; then
+          echo "Checking markdown files: $changed_md"
+          markdownlint $changed_md || true
+        fi
+
+  # ============================================================================
+  # API Contract Testing
+  # ============================================================================
+  api-contract-test:
+    name: API Contract Testing
+    runs-on: ubuntu-latest
+    needs: pr-info
+    if: needs.pr-info.outputs.has-backend-changes == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements.txt
+        pip install httpx pytest-asyncio
+
+    - name: Start API server
+      run: |
+        python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 &
+        API_PID=$!
+        echo "API_PID=$API_PID" >> $GITHUB_ENV
+        sleep 10
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        GPU_ENABLED: false
+
+    - name: Test API contract
+      run: |
+        python << 'EOF'
+        import httpx
+        import json
+        import sys
+        
+        base_url = "http://localhost:8000"
+        client = httpx.Client(base_url=base_url)
+        
+        # Test health endpoint
+        response = client.get("/health")
+        assert response.status_code == 200
+        health_data = response.json()
+        assert "status" in health_data
+        print("✅ Health endpoint OK")
+        
+        # Test model info endpoint
+        response = client.get("/model/info")
+        assert response.status_code == 200
+        model_info = response.json()
+        assert "model_name" in model_info
+        print("✅ Model info endpoint OK")
+        
+        # Test prediction endpoint
+        prediction_data = {
+            "MedInc": 5.0,
+            "HouseAge": 10.0,
+            "AveRooms": 6.0,
+            "AveBedrms": 1.2,
+            "Population": 3000.0,
+            "AveOccup": 3.0,
+            "Latitude": 34.0,
+            "Longitude": -118.0
+        }
+        
+        response = client.post("/predict", json=prediction_data)
+        if response.status_code == 200:
+            prediction = response.json()
+            assert "prediction" in prediction
+            print("✅ Prediction endpoint OK")
+        else:
+            print(f"⚠️ Prediction endpoint returned {response.status_code}")
+            print(response.text)
+        
+        print("✅ All API contract tests passed")
+        EOF
+
+    - name: Stop API server
+      if: always()
+      run: |
+        if [ -n "$API_PID" ]; then
+          kill $API_PID || true
+        fi
+
+  # ============================================================================
+  # PR Summary and Status Check
+  # ============================================================================
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [pr-info, code-quality-pr, test-pr, docker-build-pr, security-scan-pr, performance-impact, docs-check-pr, api-contract-test]
+    if: always() && github.event.pull_request.draft == false
+    
+    steps:
+    - name: Generate PR summary
+      run: |
+        echo "## PR Check Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### Changes Detected" >> $GITHUB_STEP_SUMMARY
+        echo "- Backend changes: ${{ needs.pr-info.outputs.has-backend-changes }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend changes: ${{ needs.pr-info.outputs.has-frontend-changes }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Docker changes: ${{ needs.pr-info.outputs.has-docker-changes }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Documentation changes: ${{ needs.pr-info.outputs.has-docs-changes }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### Check Results" >> $GITHUB_STEP_SUMMARY
+        echo "- Code Quality: ${{ needs.code-quality-pr.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Unit Tests: ${{ needs.test-pr.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Docker Build: ${{ needs.docker-build-pr.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Security Scan: ${{ needs.security-scan-pr.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Performance Impact: ${{ needs.performance-impact.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Documentation: ${{ needs.docs-check-pr.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- API Contract: ${{ needs.api-contract-test.result || 'skipped' }}" >> $GITHUB_STEP_SUMMARY
+
+    - name: Check overall status
+      run: |
+        # Check if any required checks failed
+        if [[ "${{ needs.code-quality-pr.result }}" == "failure" ]] || \
+           [[ "${{ needs.test-pr.result }}" == "failure" ]] || \
+           [[ "${{ needs.docker-build-pr.result }}" == "failure" ]] || \
+           [[ "${{ needs.security-scan-pr.result }}" == "failure" ]] || \
+           [[ "${{ needs.api-contract-test.result }}" == "failure" ]]; then
+          echo "❌ PR checks failed"
+          exit 1
+        else
+          echo "✅ All PR checks passed"
+        fi
+
+    - name: Comment on PR
+      uses: actions/github-script@v6
+      if: always()
+      with:
+        script: |
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(comment => 
+            comment.user.type === 'Bot' && comment.body.includes('PR Check Summary')
+          );
+          
+          const status = '${{ job.status }}' === 'success' ? '✅' : '❌';
+          const body = `## ${status} PR Check Summary
+          
+          ### Changes Detected
+          - Backend changes: ${{ needs.pr-info.outputs.has-backend-changes }}
+          - Docker changes: ${{ needs.pr-info.outputs.has-docker-changes }}
+          - Documentation changes: ${{ needs.pr-info.outputs.has-docs-changes }}
+          
+          ### Check Results
+          - Code Quality: ${{ needs.code-quality-pr.result || 'skipped' }}
+          - Unit Tests: ${{ needs.test-pr.result || 'skipped' }}
+          - Docker Build: ${{ needs.docker-build-pr.result || 'skipped' }}
+          - Security Scan: ${{ needs.security-scan-pr.result || 'skipped' }}
+          - Performance Impact: ${{ needs.performance-impact.result || 'skipped' }}
+          - API Contract: ${{ needs.api-contract-test.result || 'skipped' }}
+          
+          **Status**: ${{ job.status === 'success' && 'Ready for review' || 'Needs attention' }}`;
+          
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: body
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+          }
