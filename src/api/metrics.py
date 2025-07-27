@@ -46,7 +46,8 @@ class PrometheusMetrics:
         Args:
             registry: Optional custom registry. If None, uses default registry.
         """
-        self.registry = registry
+        from prometheus_client import REGISTRY
+        self.registry = registry or REGISTRY
         self._gpu_available = False
         self._gpu_handles = []
         self._monitoring_thread = None
@@ -841,7 +842,9 @@ def start_metrics_server(metrics: PrometheusMetrics, port: int = 8001) -> None:
         port: Port to serve metrics on
     """
     try:
-        start_http_server(port, registry=metrics.registry)
+        from prometheus_client import REGISTRY
+        registry = metrics.registry or REGISTRY
+        start_http_server(port, registry=registry)
         logger.info(f"Prometheus metrics server started on port {port}")
     except Exception as e:
         logger.error(f"Failed to start metrics server: {e}")
