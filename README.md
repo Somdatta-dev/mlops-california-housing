@@ -49,14 +49,23 @@ MLOps Platform
 │   ├── Comprehensive Database Logging with Request Tracking
 │   ├── Error Handling for Model Loading & Inference Failures
 │   └── Client Information Tracking (IP, User Agent)
+├── Database Integration and Logging
+│   ├── SQLite Database with Prediction Logging and System Metrics Tables
+│   ├── SQLAlchemy Models for Predictions and Performance Tracking
+│   ├── Database Connection Management with Proper Connection Pooling
+│   ├── Prediction Logging Utilities with Request Details and Performance Metrics
+│   ├── Database Migration Scripts and Schema Management
+│   ├── CLI Database Management Utilities
+│   └── Comprehensive Database Testing and Validation
 ├── CI/CD Pipeline (GitHub Actions)
 │   ├── Automated Testing
 │   ├── Docker Build & Deploy
 │   └── Quality Gates
 └── Monitoring & Logging
-    ├── Prediction Logging
-    ├── Model Performance Tracking
-    └── System Health Monitoring
+    ├── Prediction Logging with Database Persistence
+    ├── Model Performance Tracking with Historical Data
+    ├── System Health Monitoring with Metrics Collection
+    └── Database Health Monitoring and Maintenance
 ```
 
 ## 🚀 Quick Start
@@ -125,6 +134,11 @@ curl -X POST http://localhost:8000/predict/ \
 
 curl http://localhost:8000/predict/model/info
 
+# Database management
+python scripts/manage_database.py init --sample-data
+python scripts/manage_database.py status
+python examples/database_demo.py
+
 # View documentation (debug mode)
 # http://localhost:8000/docs
 ```
@@ -165,6 +179,8 @@ mlops-california-housing/
 │   │   ├── validation_utils.py # Validation utilities and error handling
 │   │   ├── predictions.py     # Prediction API endpoints
 │   │   ├── database.py        # Database models and operations
+│   │   ├── database_init.py   # Database initialization utilities
+│   │   ├── migrations.py      # Database migration scripts and schema management
 │   │   ├── metrics.py         # Prometheus metrics integration
 │   │   ├── model_loader.py    # MLflow Model Registry integration
 │   │   ├── health.py          # Health check endpoints
@@ -182,6 +198,7 @@ mlops-california-housing/
 ├── examples/
 │   ├── pydantic_models_demo.py # Pydantic validation models demonstration
 │   ├── fastapi_foundation_demo.py # FastAPI service foundation demonstration
+│   ├── database_demo.py        # Database integration and logging demonstration
 │   ├── mlflow_example.py       # MLflow integration demonstration
 │   ├── gpu_trainer_example.py  # GPU model trainer demonstration
 │   ├── pytorch_neural_network_example.py # PyTorch neural network training demonstration
@@ -195,6 +212,7 @@ mlops-california-housing/
 │   ├── test_api_models.py      # Pydantic validation models tests
 │   ├── test_api_foundation.py  # FastAPI service foundation tests
 │   ├── test_prediction_endpoints.py # Prediction API endpoints tests
+│   ├── test_database.py        # Database integration and logging tests
 │   ├── test_data_manager.py    # Comprehensive data management tests
 │   ├── test_mlflow_config.py   # MLflow integration tests
 │   ├── test_gpu_model_trainer.py # GPU training infrastructure tests
@@ -204,6 +222,8 @@ mlops-california-housing/
 │   ├── test_xgboost_gpu_training.py # XGBoost GPU training tests
 │   ├── test_lightgbm_gpu_training.py # LightGBM GPU training tests
 │   └── __init__.py
+├── scripts/
+│   └── manage_database.py      # CLI database management utility
 ├── notebooks/                  # Jupyter notebooks for EDA
 ├── docker/                     # Docker configuration
 ├── .github/workflows/          # CI/CD pipelines
@@ -247,6 +267,29 @@ pytest tests/ -v
 
 # Run with coverage
 pytest --cov=src tests/
+```
+
+### Database Management
+
+```bash
+# Database initialization and management
+python scripts/manage_database.py init --sample-data
+python scripts/manage_database.py status
+python scripts/manage_database.py migrate
+python scripts/manage_database.py backup
+python scripts/manage_database.py cleanup --days 30
+
+# Database demonstration
+python examples/database_demo.py
+
+# The Database System provides:
+# - SQLite database with prediction logging and system metrics tables
+# - SQLAlchemy models with comprehensive validation
+# - Database connection management with proper connection pooling
+# - Prediction logging utilities with request details and performance metrics
+# - Database migration scripts and schema management
+# - CLI database management utilities
+# - Comprehensive database testing and validation
 ```
 
 ### Data Processing Features
@@ -1175,7 +1218,7 @@ The platform includes comprehensive monitoring:
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (197+ Tests):**
+**Comprehensive Test Suite (221+ Tests):**
 
 ### Data Management Tests (23 Tests)
 
@@ -1259,6 +1302,15 @@ The platform includes comprehensive monitoring:
 - **FastAPI Application Tests**: Endpoint functionality, error handling, and middleware
 - **Integration Tests**: End-to-end FastAPI workflows with real components
 
+### Database Integration and Logging Tests (24 Tests)
+
+- **DatabaseManager Tests**: Database initialization, health checks, prediction logging, model performance tracking, system metrics collection
+- **Database Migration Tests**: Migration system validation, schema evolution, rollback capabilities, version tracking
+- **Database Initialization Tests**: Database setup, sample data creation, backup functionality, reset operations
+- **Integration Tests**: End-to-end database workflows with comprehensive lifecycle testing
+- **Error Handling Tests**: Database connection failures, logging errors, migration failures, cleanup operations
+- **Performance Tests**: Connection pooling, query optimization, bulk operations, cleanup efficiency
+
 ### Prediction API Endpoints Tests (13 Tests)
 
 - **Single Prediction Tests**: Valid input processing, model unavailable handling, prediction failures, validation errors, custom request IDs
@@ -1292,10 +1344,16 @@ pytest tests/test_mlflow_config.py -v
 # Run FastAPI foundation tests
 pytest tests/test_api_foundation.py -v
 
+# Run database tests
+pytest tests/test_database.py -v
+
 # Run prediction endpoint tests
 pytest tests/test_prediction_endpoints.py -v
 
 # Run specific test classes
+pytest tests/test_database.py::TestDatabaseManager -v
+pytest tests/test_database.py::TestDatabaseMigrator -v
+pytest tests/test_database.py::TestDatabaseInitialization -v
 pytest tests/test_data_manager.py::TestCaliforniaHousingData -v
 pytest tests/test_mlflow_config.py::TestMLflowExperimentManager -v
 pytest tests/test_mlflow_config.py::TestIntegration -v
@@ -1314,6 +1372,7 @@ pytest --cov=src tests/
 
 **Test Coverage:**
 
+- ✅ **Database Integration and Logging**: Complete database functionality testing with migrations, logging, and maintenance
 - ✅ **Prediction API Endpoints**: Complete prediction service testing with single/batch predictions, model info, database logging
 - ✅ **Pydantic Validation Models**: Comprehensive validation testing with business logic and edge cases
 - ✅ **FastAPI Service Foundation**: Complete API service testing with configuration, metrics, health checks
@@ -1472,7 +1531,62 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 2.8 - Prediction API Endpoints (Latest)
+### Version 2.9 - Database Integration and Logging (Latest)
+
+**🚀 Major New Features:**
+
+- **Complete Database Integration**: Production-ready SQLite database with comprehensive prediction logging and system metrics tables
+- **SQLAlchemy Models**: Robust database models for predictions, model performance, system metrics, and migration tracking
+- **Database Connection Management**: Proper connection pooling, session management, and health monitoring
+- **Prediction Logging Utilities**: Comprehensive logging with request details, performance metrics, and error tracking
+- **Database Migration System**: Complete schema management with versioned migrations and rollback capabilities
+- **CLI Database Management**: Full-featured command-line utility for database operations and maintenance
+
+**🔧 Technical Improvements:**
+
+- **DatabaseManager Class**: Production-ready database operations with context managers and error handling
+- **Migration System**: 4 comprehensive migrations covering schema evolution from initial setup to advanced features
+- **Database Initialization**: Automated setup with sample data creation and schema validation
+- **Health Monitoring**: Database health checks integrated into API health endpoints
+- **Backup and Maintenance**: Database backup functionality and automated cleanup utilities
+- **Connection Pooling**: Efficient connection management with proper resource cleanup
+
+**📊 Database Features:**
+
+- **Prediction Logging**: Complete request tracking with input features, predictions, confidence intervals, processing times
+- **Model Performance Tracking**: Historical model metrics with version and stage management
+- **System Metrics Collection**: Flexible system monitoring with JSON labels and real-time logging
+- **Batch Processing Support**: Batch prediction tracking with batch IDs and individual logging
+- **Error Tracking**: Comprehensive error logging with status codes and detailed error messages
+- **Client Information**: IP addresses, user agents, and request metadata with privacy controls
+
+**🧪 Testing & Validation:**
+
+- **24 Comprehensive Database Tests**: Complete testing of all database functionality with success and failure scenarios
+- **DatabaseManager Tests**: Database operations, health checks, prediction logging, performance tracking
+- **Migration System Tests**: Schema evolution, rollback capabilities, version tracking, validation
+- **Database Initialization Tests**: Setup procedures, sample data creation, backup functionality
+- **Integration Testing**: End-to-end database workflows with comprehensive lifecycle testing
+- **Performance Testing**: Connection pooling, query optimization, bulk operations, cleanup efficiency
+
+**📁 New Files Added:**
+
+- `src/api/database.py` - Enhanced with comprehensive database functionality (600+ lines)
+- `src/api/migrations.py` - Complete database migration system (400+ lines)
+- `src/api/database_init.py` - Database initialization and maintenance utilities (300+ lines)
+- `scripts/manage_database.py` - CLI database management utility (400+ lines)
+- `examples/database_demo.py` - Interactive database demonstration (300+ lines)
+- `tests/test_database.py` - Comprehensive database testing suite (24 tests, 800+ lines)
+- `DATABASE_INTEGRATION_SUMMARY.md` - Complete implementation documentation
+
+**🌐 Database Management:**
+
+- **CLI Commands**: `init`, `migrate`, `status`, `backup`, `reset`, `cleanup` with comprehensive options
+- **Migration Management**: Versioned schema evolution with automatic and manual migration support
+- **Health Monitoring**: Database connectivity, schema validation, and performance monitoring
+- **Maintenance Operations**: Automated cleanup, backup creation, and database reset functionality
+
+### Version 2.8 - Prediction API Endpoints
 
 **🚀 Major New Features:**
 
@@ -1916,6 +2030,7 @@ python -c "import sys; print(sys.path)"
 
 ## 📚 Related Documentation
 
+- **[Database Integration and Logging](DATABASE_INTEGRATION_SUMMARY.md)** - Complete database system with logging and migrations
 - **[Prediction API Endpoints](PREDICTION_API_ENDPOINTS_SUMMARY.md)** - Complete prediction service with single/batch processing
 - **[FastAPI Service Foundation](FASTAPI_SERVICE_SUMMARY.md)** - Complete FastAPI service implementation
 - **[Pydantic Validation Models](PYDANTIC_MODELS_SUMMARY.md)** - Advanced validation models and business logic
@@ -1925,4 +2040,3 @@ python -c "import sys; print(sys.path)"
 
 ---
 
-Built with ❤️ for MLOps best practices

@@ -62,7 +62,20 @@ async def lifespan(app: FastAPI):
             'api_version': api_config.version
         })
         
-        # Initialize database manager
+        # Initialize database manager and run migrations
+        from .database_init import initialize_database
+        
+        logger.info("Initializing database...")
+        db_init_success = initialize_database(
+            config=api_config,
+            run_migrations=True,
+            create_sample_data=False
+        )
+        
+        if not db_init_success:
+            logger.error("Database initialization failed")
+            raise RuntimeError("Database initialization failed")
+        
         database_manager = initialize_database_manager(api_config)
         
         # Initialize model loader

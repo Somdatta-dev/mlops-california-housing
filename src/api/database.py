@@ -313,6 +313,9 @@ class DatabaseManager:
                 # Apply pagination and ordering
                 predictions = query.order_by(PredictionLog.timestamp.desc()).offset(offset).limit(limit).all()
                 
+                # Detach objects from session to avoid DetachedInstanceError
+                session.expunge_all()
+                
                 return predictions
                 
         except SQLAlchemyError as e:
@@ -335,6 +338,8 @@ class DatabaseManager:
             Dictionary with prediction statistics
         """
         try:
+            from sqlalchemy import func
+            
             with self.get_session() as session:
                 query = session.query(PredictionLog)
                 
@@ -350,19 +355,29 @@ class DatabaseManager:
                 successful_predictions = query.filter(PredictionLog.status == "success").count()
                 failed_predictions = query.filter(PredictionLog.status == "error").count()
                 
-                # Get average processing time
-                avg_processing_time = session.query(
-                    session.query(PredictionLog.processing_time_ms).filter(
-                        PredictionLog.status == "success"
-                    ).subquery().c.processing_time_ms
-                ).scalar() or 0.0
+                # Get average processing time for successful predictions
+                avg_processing_time_result = session.query(
+                    func.avg(PredictionLog.processing_time_ms)
+                ).filter(PredictionLog.status == "success")
+                
+                # Apply time filters to avg query as well
+                if start_time:
+                    avg_processing_time_result = avg_processing_time_result.filter(
+                        PredictionLog.timestamp >= start_time
+                    )
+                if end_time:
+                    avg_processing_time_result = avg_processing_time_result.filter(
+                        PredictionLog.timestamp <= end_time
+                    )
+                
+                avg_processing_time = avg_processing_time_result.scalar() or 0.0
                 
                 return {
                     "total_predictions": total_predictions,
                     "successful_predictions": successful_predictions,
                     "failed_predictions": failed_predictions,
                     "success_rate": successful_predictions / total_predictions if total_predictions > 0 else 0.0,
-                    "average_processing_time_ms": avg_processing_time
+                    "average_processing_time_ms": float(avg_processing_time)
                 }
                 
         except SQLAlchemyError as e:
@@ -418,9 +433,10 @@ class DatabaseManager:
             True if database is healthy, False otherwise
         """
         try:
+            from sqlalchemy import text
             with self.get_session() as session:
                 # Simple query to test connection
-                session.execute("SELECT 1")
+                session.execute(text("SELECT 1"))
                 return True
                 
         except Exception as e:
