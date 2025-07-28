@@ -24,6 +24,7 @@ from .model_loader import ModelLoader, initialize_model_loader, get_model_loader
 from .database import DatabaseManager, initialize_database_manager, get_database_manager
 from .health import router as health_router
 from .predictions import router as predictions_router
+from .database_endpoints import router as database_router
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +393,9 @@ def setup_routers(app: FastAPI) -> None:
     
     # Predictions router
     app.include_router(predictions_router)
+    
+    # Database router
+    app.include_router(database_router)
     
     # Root endpoint
     @app.get("/", response_class=PlainTextResponse)

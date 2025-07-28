@@ -514,6 +514,43 @@ class PrometheusMetrics:
             table=table
         ).observe(duration)
     
+    def record_database_query(self, query_type: str, duration_ms: float) -> None:
+        """
+        Record database query metrics.
+        
+        Args:
+            query_type: Type of database query
+            duration_ms: Query duration in milliseconds
+        """
+        self.database_operations_total.labels(
+            operation="query",
+            table=query_type
+        ).inc()
+        
+        self.database_operation_duration.labels(
+            operation="query",
+            table=query_type
+        ).observe(duration_ms / 1000.0)  # Convert to seconds
+    
+    def record_database_export(self, format: str, record_count: int, duration_ms: float) -> None:
+        """
+        Record database export metrics.
+        
+        Args:
+            format: Export format (csv, json)
+            record_count: Number of records exported
+            duration_ms: Export duration in milliseconds
+        """
+        self.database_operations_total.labels(
+            operation="export",
+            table=format
+        ).inc()
+        
+        self.database_operation_duration.labels(
+            operation="export",
+            table=format
+        ).observe(duration_ms / 1000.0)  # Convert to seconds
+    
     def update_gpu_metrics(self) -> None:
         """Update GPU metrics if available."""
         if not self._gpu_available:

@@ -73,6 +73,19 @@ MLOps Platform
 │   ├── Release Management with Automated GitHub Releases and Production Deployment
 │   ├── Security Monitoring with Daily Dependency Updates and Vulnerability Scanning
 │   └── Manual Workflow Dispatch for On-Demand Operations
+├── Next.js Dashboard (Web UI)
+│   ├── Modern React Dashboard with Next.js 15 and TypeScript
+│   ├── Real-time System Monitoring with WebSocket Integration
+│   ├── Interactive Prediction Interface with Live Results
+│   ├── Model Training Management and Progress Tracking
+│   ├── Database Explorer with Advanced Filtering and Export
+│   ├── Comprehensive System Health Monitoring Dashboard
+│   ├── GPU Monitoring with Real-time Metrics Visualization
+│   ├── Error Log Management with Search and Filtering
+│   ├── Alert System with Severity-based Notifications
+│   ├── Performance Visualization with Historical Trends
+│   ├── Responsive Design with Tailwind CSS and shadcn/ui
+│   └── Production-ready Deployment with Docker Support
 └── Monitoring & Logging
     ├── Prometheus Metrics Integration with GPU Monitoring
     ├── Comprehensive System Health Monitoring with Real-time Metrics
@@ -162,7 +175,40 @@ python examples/database_demo.py
 # http://localhost:8000/docs
 ```
 
-### 5. Docker Deployment (Production-Ready)
+### 5. Start Next.js Dashboard (Web UI)
+
+```bash
+# Navigate to dashboard directory
+cd dashboard
+
+# Install dependencies
+npm install
+
+# Configure environment (create .env.local)
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+echo "NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws" >> .env.local
+
+# Start development server
+npm run dev
+
+# Access the dashboard
+# http://localhost:3000
+
+# Build for production
+npm run build
+npm start
+
+# Available dashboard features:
+# - Real-time system monitoring and alerts
+# - Interactive prediction interface
+# - Model training management and progress tracking
+# - Database explorer with advanced filtering
+# - GPU monitoring with live metrics
+# - Error log management and search
+# - Performance visualization with historical trends
+```
+
+### 6. Docker Deployment (Production-Ready)
 
 ```bash
 # Quick Docker test
@@ -189,6 +235,112 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # Test GPU functionality in container
 docker run --rm --gpus all mlops-california-housing:latest python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
 ```
+
+## 🌐 Next.js Dashboard (Web UI)
+
+### Modern React Dashboard with Real-time Monitoring ✅
+
+**Production-Ready Web Interface:**
+
+- **Next.js 15 with App Router**: Modern React framework with TypeScript and Tailwind CSS
+- **Real-time System Monitoring**: Live system health, GPU metrics, and performance visualization
+- **Interactive Prediction Interface**: User-friendly prediction forms with live results
+- **Model Training Management**: Training progress tracking and GPU monitoring
+- **Database Explorer**: Advanced filtering, search, and data export capabilities
+- **Comprehensive Monitoring Dashboard**: System alerts, error logs, and performance trends
+- **Responsive Design**: Mobile-friendly interface with shadcn/ui components
+- **WebSocket Integration**: Real-time updates for all monitoring and prediction data
+
+### Dashboard Features
+
+**Main Dashboard (`/`):**
+- **PredictionDashboard**: Interactive prediction interface with real-time results
+- **RealTimePredictionFeed**: Live feed of recent predictions with WebSocket updates
+- **PerformanceMetrics**: System performance indicators and API health status
+- **PredictionVisualization**: Interactive charts for prediction data analysis
+
+**System Monitoring (`/monitoring`):**
+- **SystemMonitor**: Live CPU, memory, disk, and GPU metrics with trend indicators
+- **ErrorLogDisplay**: Searchable error logs with filtering by level and time range
+- **AlertSystem**: System health alerts with severity levels and resolution tracking
+- **PerformanceVisualization**: Historical performance trends with interactive charts
+
+**Model Training (`/training`):**
+- **TrainingInterface**: Comprehensive training control and monitoring
+- **TrainingProgressChart**: Real-time training progress with loss curves
+- **GPUMonitoringPanel**: GPU utilization, temperature, and memory monitoring
+- **HyperparameterTuning**: Interactive parameter optimization interface
+- **ModelComparisonTable**: Side-by-side model performance comparison
+
+**Database Explorer (`/database`):**
+- **DatabaseExplorer**: Browse prediction records with advanced filtering
+- **PredictionTable**: Paginated data table with sorting and search
+- **DatabaseStats**: Database performance metrics and usage statistics
+- **PredictionTrends**: Trend analysis with interactive time-series charts
+- **ExportControls**: Data export in CSV, JSON, and Excel formats
+
+### Technical Implementation
+
+**Technology Stack:**
+- **Framework**: Next.js 15.4.4 with App Router and TypeScript
+- **Styling**: Tailwind CSS 4.x with shadcn/ui component library
+- **Charts**: Recharts 3.1.0 for interactive data visualization
+- **Real-time**: WebSocket integration for live updates
+- **State Management**: React hooks with custom state management
+- **HTTP Client**: Custom API client with error handling and caching
+
+**Key Components:**
+- **Custom Hooks**: `useApi`, `useWebSocket`, `useSystemHealth`, `useGPUMetrics`
+- **Service Layer**: API client and WebSocket client with reconnection logic
+- **UI Components**: Comprehensive shadcn/ui component library integration
+- **Type Safety**: Full TypeScript coverage with shared type definitions
+
+**Performance Features:**
+- **Code Splitting**: Automatic code splitting with Next.js App Router
+- **Caching**: API response caching with React Query patterns
+- **Lazy Loading**: Components loaded on demand for optimal performance
+- **Bundle Optimization**: Regular bundle size monitoring and optimization
+
+### Dashboard Usage
+
+**Quick Start:**
+```bash
+# Navigate to dashboard directory
+cd dashboard
+
+# Install dependencies
+npm install
+
+# Configure environment
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+echo "NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws" >> .env.local
+
+# Start development server
+npm run dev
+
+# Access dashboard at http://localhost:3000
+```
+
+**Production Deployment:**
+```bash
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Or deploy with Docker
+docker build -t mlops-dashboard .
+docker run -p 3000:3000 mlops-dashboard
+```
+
+**Available Pages:**
+- **Main Dashboard**: http://localhost:3000/ - Central hub with prediction interface
+- **System Monitoring**: http://localhost:3000/monitoring - Real-time system health
+- **Model Training**: http://localhost:3000/training - Training management interface
+- **Database Explorer**: http://localhost:3000/database - Data exploration and export
+
+For detailed dashboard documentation, see [NEXTJS_DASHBOARD_DOCUMENTATION.md](NEXTJS_DASHBOARD_DOCUMENTATION.md).
 
 ## 📊 Dataset Information
 
@@ -271,6 +423,33 @@ mlops-california-housing/
 │   └── __init__.py
 ├── scripts/
 │   └── manage_database.py      # CLI database management utility
+├── dashboard/                  # Next.js Web Dashboard (Modern UI)
+│   ├── src/
+│   │   ├── app/               # Next.js App Router pages
+│   │   │   ├── page.tsx      # Main dashboard page
+│   │   │   ├── monitoring/   # System monitoring pages
+│   │   │   ├── training/     # Model training pages
+│   │   │   └── database/     # Database explorer pages
+│   │   ├── components/       # React components
+│   │   │   ├── dashboard/    # Dashboard-specific components
+│   │   │   ├── monitoring/   # System monitoring components
+│   │   │   ├── training/     # Model training components
+│   │   │   ├── database/     # Database management components
+│   │   │   ├── layout/       # Layout components (Header, Sidebar)
+│   │   │   └── ui/           # Reusable UI components (shadcn/ui)
+│   │   ├── hooks/            # Custom React hooks
+│   │   │   ├── useApi.ts     # API interaction hooks
+│   │   │   └── useWebSocket.ts # WebSocket communication hooks
+│   │   ├── services/         # External service integrations
+│   │   │   ├── api.ts        # HTTP API client
+│   │   │   └── websocket.ts  # WebSocket client
+│   │   ├── types/            # TypeScript type definitions
+│   │   └── lib/              # Utility functions
+│   ├── public/               # Static assets
+│   ├── package.json          # Dependencies and scripts
+│   ├── tailwind.config.js    # Tailwind CSS configuration
+│   ├── tsconfig.json         # TypeScript configuration
+│   └── next.config.js        # Next.js configuration
 ├── notebooks/                  # Jupyter notebooks for EDA
 ├── docker/                     # Docker configuration with CUDA 12.8 support
 │   ├── build.sh               # Docker build automation script
@@ -1565,7 +1744,39 @@ model_accuracy_score{model_version="v1.2.3"}
 
 ## 🧪 Testing Strategy
 
-**Comprehensive Test Suite (246+ Tests):**
+**Comprehensive Test Suite (246+ Tests + Dashboard Tests):**
+
+### Next.js Dashboard Tests
+
+- **Component Testing**: React component unit tests with React Testing Library
+- **Hook Testing**: Custom hooks testing with React Hooks Testing Library
+- **API Integration Testing**: API client and WebSocket service testing
+- **Type Safety Testing**: TypeScript compilation and type checking
+- **Build Testing**: Next.js build verification and bundle analysis
+- **Accessibility Testing**: WCAG 2.1 compliance and screen reader compatibility
+
+```bash
+# Dashboard testing commands
+cd dashboard
+
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Type checking
+npm run type-check
+
+# Linting
+npm run lint
+
+# Build verification
+npm run build
+```
 
 ### Prometheus Metrics Tests (25 Tests)
 
@@ -1787,12 +1998,19 @@ python setup_project.py
 # Start FastAPI server
 python src/api/run_server.py
 
-# Or with uvicorn directly
-uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+# Start Next.js Dashboard
+cd dashboard
+npm install
+npm run dev
+
+# Access services
+# API: http://localhost:8000
+# Dashboard: http://localhost:3000
 ```
 
 ### Production Deployment
 
+**API Server:**
 ```bash
 # Start production server
 python src/api/run_server.py --host 0.0.0.0 --port 8000
@@ -1801,14 +2019,45 @@ python src/api/run_server.py --host 0.0.0.0 --port 8000
 API_DEBUG=false API_HOST=0.0.0.0 API_PORT=8000 python src/api/run_server.py
 ```
 
-### Docker Support (Future)
-
+**Dashboard:**
 ```bash
-# Build Docker image
-docker build -t mlops-housing .
+# Build and start dashboard
+cd dashboard
+npm run build
+npm start
 
-# Run container
-docker run -p 8000:8000 mlops-housing
+# Or with PM2 for production
+npm install -g pm2
+pm2 start npm --name "mlops-dashboard" -- start
+```
+
+### Docker Deployment
+
+**Full Stack with Docker Compose:**
+```bash
+# Start all services (API + Dashboard + MLflow + Monitoring)
+docker-compose up -d
+
+# Access services
+# API: http://localhost:8000
+# Dashboard: http://localhost:3000
+# MLflow: http://localhost:5000
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin123)
+```
+
+**Individual Services:**
+```bash
+# Build API image
+docker build -t mlops-api .
+
+# Build Dashboard image
+cd dashboard
+docker build -t mlops-dashboard .
+
+# Run services
+docker run -p 8000:8000 mlops-api
+docker run -p 3000:3000 mlops-dashboard
 ```
 
 ### Docker Deployment Options
@@ -1914,7 +2163,67 @@ python -c "import sys; print(sys.path)"
 
 ## 🆕 Latest Updates & Changes
 
-### Version 3.2 - GitHub Actions CI/CD Pipeline (Latest)
+### Version 3.3 - Next.js Dashboard (Web UI) (Latest)
+
+**🚀 Major New Features:**
+
+- **Modern React Dashboard**: Complete Next.js 15 web interface with TypeScript and Tailwind CSS
+- **Real-time System Monitoring**: Live system health monitoring with WebSocket integration and GPU metrics
+- **Interactive Prediction Interface**: User-friendly prediction forms with real-time results and live feed
+- **Model Training Management**: Comprehensive training oversight with progress tracking and GPU monitoring
+- **Database Explorer**: Advanced data exploration with filtering, search, pagination, and export capabilities
+- **Comprehensive Monitoring Dashboard**: System alerts, error logs, performance trends, and health indicators
+- **Responsive Design**: Mobile-friendly interface with shadcn/ui components and modern UX patterns
+
+**🔧 Technical Implementation:**
+
+- **Next.js 15 with App Router**: Modern React framework with server-side rendering and TypeScript
+- **Component Architecture**: Modular component system with custom hooks and service layer
+- **Real-time Communication**: WebSocket integration for live updates across all dashboard features
+- **API Integration**: Custom API client with error handling, caching, and automatic retries
+- **State Management**: React hooks with custom state management and context providers
+- **UI Components**: Comprehensive shadcn/ui component library with Tailwind CSS styling
+- **Performance Optimization**: Code splitting, lazy loading, and bundle optimization
+
+**📊 Dashboard Features:**
+
+- **Main Dashboard**: Interactive prediction interface with real-time results and performance metrics
+- **System Monitoring**: Live CPU, memory, GPU metrics with alerts and error log management
+- **Model Training**: Training progress tracking, GPU monitoring, and hyperparameter tuning interface
+- **Database Explorer**: Advanced data filtering, trend analysis, and multi-format export capabilities
+- **Performance Visualization**: Historical trends with interactive charts and time range selection
+- **Alert System**: Severity-based alerts with resolution tracking and real-time notifications
+
+**🧪 Testing & Validation:**
+
+- **TypeScript Coverage**: Full TypeScript implementation with comprehensive type definitions
+- **Component Testing**: Unit tests for critical components with React Testing Library
+- **Build Verification**: Automated build testing and bundle size monitoring
+- **Cross-browser Testing**: Compatibility testing across modern browsers and devices
+- **Performance Testing**: Core Web Vitals monitoring and optimization
+- **Accessibility Testing**: WCAG 2.1 compliance validation and screen reader support
+
+**📁 New Files Added:**
+
+- `dashboard/` - Complete Next.js application directory (50+ files)
+- `dashboard/src/app/` - Next.js App Router pages with layout and routing
+- `dashboard/src/components/` - React components organized by feature area
+- `dashboard/src/hooks/` - Custom React hooks for API and WebSocket integration
+- `dashboard/src/services/` - API client and WebSocket service implementations
+- `dashboard/src/types/` - Comprehensive TypeScript type definitions
+- `dashboard/package.json` - Dependencies including Next.js 15, React 19, Tailwind CSS 4
+- `NEXTJS_DASHBOARD_DOCUMENTATION.md` - Complete dashboard documentation (2000+ lines)
+
+**🌐 Dashboard Capabilities:**
+
+- **Real-time Monitoring**: Live system metrics, GPU monitoring, and performance visualization
+- **Interactive Predictions**: User-friendly prediction forms with validation and real-time results
+- **Training Management**: Model training oversight with progress tracking and resource monitoring
+- **Data Exploration**: Advanced database browsing with filtering, search, and export functionality
+- **Alert Management**: System health alerts with severity levels and resolution workflows
+- **Performance Analytics**: Historical trends analysis with interactive charts and time series data
+
+### Version 3.2 - GitHub Actions CI/CD Pipeline
 
 **🚀 Major New Features:**
 

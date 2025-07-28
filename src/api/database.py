@@ -325,6 +325,218 @@ class DatabaseManager:
             logger.error(f"Unexpected error getting predictions: {e}")
             return []
     
+    def get_predictions_filtered(self, limit: int = 100, offset: int = 0,
+                               model_version: Optional[str] = None,
+                               status: Optional[str] = None,
+                               batch_id: Optional[str] = None,
+                               start_time: Optional[datetime] = None,
+                               end_time: Optional[datetime] = None,
+                               search_term: Optional[str] = None) -> List[PredictionLog]:
+        """
+        Get prediction logs with comprehensive filtering and pagination.
+        
+        Args:
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+            model_version: Optional model version filter
+            status: Optional status filter
+            batch_id: Optional batch ID filter
+            start_time: Optional start time filter
+            end_time: Optional end time filter
+            search_term: Optional search term for request ID
+            
+        Returns:
+            List of prediction logs
+        """
+        try:
+            with self.get_session() as session:
+                query = session.query(PredictionLog)
+                
+                # Apply filters
+                if model_version:
+                    query = query.filter(PredictionLog.model_version == model_version)
+                
+                if status:
+                    query = query.filter(PredictionLog.status == status)
+                
+                if batch_id:
+                    query = query.filter(PredictionLog.batch_id == batch_id)
+                
+                if start_time:
+                    query = query.filter(PredictionLog.timestamp >= start_time)
+                
+                if end_time:
+                    query = query.filter(PredictionLog.timestamp <= end_time)
+                
+                if search_term:
+                    query = query.filter(PredictionLog.request_id.contains(search_term))
+                
+                # Apply pagination and ordering
+                predictions = query.order_by(PredictionLog.timestamp.desc()).offset(offset).limit(limit).all()
+                
+                # Detach objects from session to avoid DetachedInstanceError
+                session.expunge_all()
+                
+                return predictions
+                
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to get filtered predictions: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error getting filtered predictions: {e}")
+            return []
+    
+    def get_predictions_count(self, model_version: Optional[str] = None,
+                            status: Optional[str] = None,
+                            batch_id: Optional[str] = None,
+                            start_time: Optional[datetime] = None,
+                            end_time: Optional[datetime] = None,
+                            search_term: Optional[str] = None) -> int:
+        """
+        Get total count of predictions matching filters.
+        
+        Args:
+            model_version: Optional model version filter
+            status: Optional status filter
+            batch_id: Optional batch ID filter
+            start_time: Optional start time filter
+            end_time: Optional end time filter
+            search_term: Optional search term for request ID
+            
+        Returns:
+            Total count of matching predictions
+        """
+        try:
+            with self.get_session() as session:
+                query = session.query(PredictionLog)
+                
+                # Apply filters
+                if model_version:
+                    query = query.filter(PredictionLog.model_version == model_version)
+                
+                if status:
+                    query = query.filter(PredictionLog.status == status)
+                
+                if batch_id:
+                    query = query.filter(PredictionLog.batch_id == batch_id)
+                
+                if start_time:
+                    query = query.filter(PredictionLog.timestamp >= start_time)
+                
+                if end_time:
+                    query = query.filter(PredictionLog.timestamp <= end_time)
+                
+                if search_term:
+                    query = query.filter(PredictionLog.request_id.contains(search_term))
+                
+                return query.count()
+                
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to get predictions count: {e}")
+            return 0
+        except Exception as e:
+            logger.error(f"Unexpected error getting predictions count: {e}")
+            return 0
+    
+    def get_prediction_trends(self, start_time: datetime, end_time: datetime,
+                            interval: str = "hour") -> Dict[str, Any]:
+        """
+        Get prediction trends and patterns over time.
+        
+        Args:
+            start_time: Start time for trend analysis
+            end_time: End time for trend analysis
+            interval: Time interval for aggregation (hour or day)
+            
+        Returns:
+            Dictionary with trend data
+        """
+        try:
+            from sqlalchemy import func, case
+            
+            with self.get_session() as session:
+                # Determine time grouping based on interval
+                if interval == "hour":
+                    time_group = func.date_trunc('hour', PredictionLog.timestamp)
+                else:  # day
+                    time_group = func.date_trunc('day', PredictionLog.timestamp)
+                
+                # Query for prediction volume and success rates over time
+                trend_query = session.query(
+                    time_group.label('time_bucket'),
+                    func.count(PredictionLog.id).label('total_predictions'),
+                    func.sum(case((PredictionLog.status == 'success', 1), else_=0)).label('successful_predictions'),
+                    func.sum(case((PredictionLog.status == 'error', 1), else_=0)).label('failed_predictions'),
+                    func.avg(case((PredictionLog.status == 'success', PredictionLog.processing_time_ms), else_=None)).label('avg_processing_time')
+                ).filter(
+                    PredictionLog.timestamp >= start_time,
+                    PredictionLog.timestamp <= end_time
+                ).group_by(time_group).order_by(time_group)
+                
+                trend_results = trend_query.all()
+                
+                # Query for model version usage
+                model_usage_query = session.query(
+                    PredictionLog.model_version,
+                    func.count(PredictionLog.id).label('usage_count')
+                ).filter(
+                    PredictionLog.timestamp >= start_time,
+                    PredictionLog.timestamp <= end_time
+                ).group_by(PredictionLog.model_version).order_by(func.count(PredictionLog.id).desc())
+                
+                model_usage_results = model_usage_query.all()
+                
+                # Format results
+                volume_trends = []
+                success_rate_trends = []
+                processing_time_trends = []
+                
+                for result in trend_results:
+                    timestamp = result.time_bucket.isoformat() if result.time_bucket else None
+                    total = result.total_predictions or 0
+                    successful = result.successful_predictions or 0
+                    success_rate = (successful / total * 100) if total > 0 else 0
+                    avg_time = float(result.avg_processing_time) if result.avg_processing_time else 0
+                    
+                    volume_trends.append({
+                        "timestamp": timestamp,
+                        "total_predictions": total,
+                        "successful_predictions": successful,
+                        "failed_predictions": result.failed_predictions or 0
+                    })
+                    
+                    success_rate_trends.append({
+                        "timestamp": timestamp,
+                        "success_rate": success_rate
+                    })
+                    
+                    processing_time_trends.append({
+                        "timestamp": timestamp,
+                        "avg_processing_time_ms": avg_time
+                    })
+                
+                model_usage = [
+                    {
+                        "model_version": result.model_version,
+                        "usage_count": result.usage_count
+                    }
+                    for result in model_usage_results
+                ]
+                
+                return {
+                    "volume_trends": volume_trends,
+                    "success_rate_trends": success_rate_trends,
+                    "processing_time_trends": processing_time_trends,
+                    "model_usage": model_usage
+                }
+                
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to get prediction trends: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Unexpected error getting prediction trends: {e}")
+            return {}
+    
     def get_prediction_stats(self, start_time: Optional[datetime] = None,
                            end_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
